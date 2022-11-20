@@ -1,0 +1,15 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Launch Chrome",
+			"type": "pwa-chrome",
+			"request": "launch",
+			"url": "${workspaceFolder}/docs/index.html",
+			"webRoot": "${workspaceFolder}/docs",
+			"runtimeArgs": [
+				"--incognito"
+			]
+		},
+	]
+}

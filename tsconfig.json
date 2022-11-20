@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2016",
+    "module": "commonjs",
+
+    "sourceMap": true,
+    "rootDir": "./src",
+    "outDir": "./docs",
+
+    "skipLibCheck": true,
+    "removeComments": false,
+    "noEmitOnError": true
+  }
+}

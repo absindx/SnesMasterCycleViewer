@@ -1,0 +1,17 @@
+Thumbs.db
+*.exe
+*.dll
+*.old
+*.bak
+*.cache
+*.log
+*.txt
+
+*.sfc
+*.smc
+*.zip
+*.lnk
+
+*.js.map
+
+old/*
