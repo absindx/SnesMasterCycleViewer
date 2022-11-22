@@ -34,6 +34,11 @@ namespace Utility{
 			const s	= '0'.repeat(digit) + v.toString(16);
 			return s.substring(s.length - digit).toUpperCase();
 		}
+		public static PadSpace(str: string, length: number = 0): string{
+			const l	= length - str.length;
+			const s	= str + ((l > 0)? ' '.repeat(l) : '');
+			return s;
+		}
 	}
 }
 
@@ -69,7 +74,7 @@ namespace Emulator{
 			const strDB	= Utility.Format.ToHexString(this.DB, 2);
 			return `PC=${strPC},`
 				+ `A=${strA},X=${strX},Y=${strY},S=${strS},`
-				+ `P=${strP} ${this.ToStringStatus()}`
+				+ `P=${strP} ${this.ToStringStatus()},`
 				+ `D=${strD},DB=${strDB}`;
 		}
 		public ToStringStatus(): string{
@@ -85,6 +90,111 @@ namespace Emulator{
 			}
 			status		+= baseStatus[8];
 			return status;
+		}
+
+		public GetStatusFlagN(): boolean{
+			return (this.P >> 7) != 0;
+		}
+		public GetStatusFlagV(): boolean{
+			return (this.P >> 6) != 0;
+		}
+		public GetStatusFlagM(): boolean{
+			return (this.P >> 5) != 0;
+		}
+		public GetStatusFlagX(): boolean{
+			return (this.P >> 4) != 0;
+		}
+		public GetStatusFlagD(): boolean{
+			return (this.P >> 3) != 0;
+		}
+		public GetStatusFlagI(): boolean{
+			return (this.P >> 2) != 0;
+		}
+		public GetStatusFlagZ(): boolean{
+			return (this.P >> 1) != 0;
+		}
+		public GetStatusFlagC(): boolean{
+			return (this.P >> 0) != 0;
+		}
+		public GetStatusFlagE(): boolean{
+			return this.E;
+		}
+		public SetStatusFlagN(b: boolean) {
+			const m	= 1 << 7;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagV(b: boolean) {
+			const m	= 1 << 6;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagM(b: boolean) {
+			const m	= 1 << 5;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagX(b: boolean) {
+			const m	= 1 << 4;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagD(b: boolean) {
+			const m	= 1 << 3;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagI(b: boolean) {
+			const m	= 1 << 2;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagZ(b: boolean) {
+			const m	= 1 << 1;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagC(b: boolean) {
+			const m	= 1 << 0;
+			let p	= (this.P & (0xFF ^ m)) | ((b)? m : 0);
+			this.SetStatusRegister(p);
+		}
+		public SetStatusFlagE(b: boolean) {
+			this.E	= b;
+		}
+		public SetStatusRegister(p: number){
+			this.P	= Utility.Type.ToByte(p);
+
+			// TODO: Implements
+			// overwrite some registers
+		}
+		public SwapStatusFlagCE(){
+			// swap C, E flags
+			let e	= (this.P & 1) != 0;
+			this.SetStatusFlagC(this.E);
+			this.E	= e;
+
+			if(this.E){
+				// TODO: Implements
+				// to emulation mode
+			}
+		}
+
+		public GetRegisterStringA(value: number = this.A): string{
+			let digit	= (this.GetStatusFlagM())? 4 : 2;
+			return Utility.Format.ToHexString(value, digit);
+		}
+		public GetRegisterStringX(value: number = this.X): string{
+			let digit	= (this.GetStatusFlagX())? 4 : 2;
+			return Utility.Format.ToHexString(value, digit);
+		}
+		public GetRegisterStringY(value: number = this.Y): string{
+			let digit	= (this.GetStatusFlagX())? 4 : 2;
+			return Utility.Format.ToHexString(value, digit);
+		}
+
+		public GetRelativeAddress(offset: number): number{
+			return (this.PB << 16) + Utility.Type.ToWord(this.PC + offset);
 		}
 	};
 
@@ -132,6 +242,7 @@ namespace Emulator{
 		XBA, XCE,
 	}
 	export const InstructionTable	= {
+	// TODO: separate #imm -> #imm8, #immP
 	//    Mnemonic imp         S           dp          dp,Y        (dp,X)      [dp]        abs         abs,Y       (abs,X)     long        rel         sr,S        xyc         Flags
 	//                   A           #imm        dp,X        (dp)        (dp),Y      [dp],Y      abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y
 		ADC: [ null, null, null, 0x69, 0x65, 0x75, null, 0x72, 0x61, 0x71, 0x67, 0x77, 0x6D, 0x7D, 0x79, null, null, null, 0x6F, 0x7F, null, null, 0x63, 0x73, null ],	// NV----ZC
@@ -147,7 +258,8 @@ namespace Emulator{
 		BNE: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xD0, null, null, null, null ],	// --------
 		BPL: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x10, null, null, null, null ],	// --------
 		BRA: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x80, null, null, null, null ],	// --------
-		BRK: [ null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
+	//	BRK: [ null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
+		BRK: [ null, null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
 		BRL: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x82, null, null, null ],	// --------
 		BVC: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x50, null, null, null, null ],	// --------
 		BVS: [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x70, null, null, null, null ],	// --------
@@ -157,7 +269,8 @@ namespace Emulator{
 		CLV: [ 0xB8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -V------ (V=0)
 	//	CMA: [ null, null, null, 0xC9, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
 		CMP: [ null, null, null, 0xC9, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
-		COP: [ null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
+	//	COP: [ null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
+		COP: [ null, null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI-- (D=0, I=1)
 		CPX: [ null, null, null, 0xE0, 0xE4, null, null, null, null, null, null, null, 0xEC, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
 		CPY: [ null, null, null, 0xC0, 0xC4, null, null, null, null, null, null, null, 0xCC, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
 	//	DEA: [ null, 0x3A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
@@ -241,8 +354,9 @@ namespace Emulator{
 	};
 
 	export class StepLog{
-		Instruction: Instruction	= Instruction.BRK;
-		Opcode: number | null		= InstructionTable.BRK[Addressing.Stack];
+		Instruction: Instruction	= Instruction.BRK;	// Initial: BRK #imm ($00)
+		Addressing: Addressing		= Addressing.Immediate;
+		Opcode: number | null		= InstructionTable.BRK[this.Addressing];
 		Operand1: number		= 0;
 		Operand2: number		= 0;
 		InstructionAddress: number	= 0;
@@ -251,14 +365,57 @@ namespace Emulator{
 		EffectiveValue: number		= 0;
 		CpuCycle: number		= 0;
 		ExecuteCycle: number		= 0;
+		InstructionLength: number	= 0;
 		SourceLineNumber: number	= -1;
 		Registers: Registers		= new Registers();
 
 		public GetLogString(): string{
-			// TODO: Implements
-			return `${Instruction[this.Instruction]}`;
+			return `${Instruction[this.Instruction]} `
+				+ `${Utility.Format.PadSpace(this.GetFormattedOperand(), 40)}`
+				+ ` ; ${this.Registers.ToString()},CYC=${this.CpuCycle}`;
 		}
-
+		protected GetFormattedOperand(): string{
+			const strOpr1M		= this.Registers.GetRegisterStringA(this.Operand1);
+			const strOpr1B		= Utility.Format.ToHexString(this.Operand1, 2);
+			const strOpr1W		= Utility.Format.ToHexString(this.Operand1, 4);
+			const strOpr1L		= Utility.Format.ToHexString(this.Operand1, 6);
+			const strOpr2B		= Utility.Format.ToHexString(this.Operand2, 2);
+			const strIndAddr	= Utility.Format.ToHexString(this.IndirectAddress, 6);
+			const strEffAddr	= Utility.Format.ToHexString(this.EffectiveAddress, 6);
+			const strEffValM	= this.Registers.GetRegisterStringA(this.EffectiveValue);
+			const strLngAccess	= `$${strEffAddr} => $${strEffValM}`;
+			const strIndAccess	= `$${strIndAddr} > $${strEffAddr} => $${strEffValM}`;
+			const strOprRel		= Utility.Format.ToHexString(this.Registers.GetRelativeAddress(Utility.Type.ToChar(this.Operand1) + this.InstructionLength), 4);
+			const strXycDst		= '$' + strOpr1B + Utility.Format.ToHexString(this.Registers.Y, 4);
+			const strXycSrc		= '$' + strOpr2B + Utility.Format.ToHexString(this.Registers.X, 4);
+			return [
+				``,								// imp
+				`A`,								// A
+				``,								// S
+				`#${strOpr1M}`,							// #imm	// TODO: separate 8/P
+				`$${strOpr1B} @ ${strLngAccess}`,				// dp
+				`$${strOpr1B}, X @ ${strLngAccess}`,				// dp,X
+				`$${strOpr1B}, Y @ ${strLngAccess}`,				// dp,Y
+				`($${strOpr1B}) @ ${strIndAccess}`,				// (dp)
+				`($${strOpr1B}, X) @ ${strIndAccess}`,				// (dp,X)
+				`($${strOpr1B}), Y @ ${strIndAccess}`,				// (dp),Y
+				`[$${strOpr1B}] @ ${strIndAccess}`,				// [dp]
+				`[$${strOpr1B}], Y @ ${strIndAccess}`,				// [dp],Y
+				`$${strOpr1W} @ ${strLngAccess}`,				// abs
+				`$${strOpr1W}, X @ ${strLngAccess}`,				// abs,X
+				`$${strOpr1W}, Y @ ${strLngAccess}`,				// abs,Y
+				`($${strOpr1W}) @ ${strIndAccess}`,				// (abs)
+				`($${strOpr1W}, X) @ ${strIndAccess}`,				// (abs,X)
+				`[$${strOpr1W}] @ ${strIndAccess}`,				// [abs]
+				`$${strOpr1L}`,							// long
+				`$${strOpr1L} @ ${strLngAccess}`,				// long,X
+				`$${strOprRel} @ ${Utility.Type.ToChar(this.Operand1)}`,	// rel
+				`$${strOprRel} @ ${Utility.Type.ToShort(this.Operand1)}`,	// rlong
+				`$${strOpr1B} @ ${strLngAccess}`,				// sr,S
+				`$${strOpr1B} @ ${strIndAccess}`,				// (sr,S),Y
+				`$${strOpr1B}, $${strOpr2B} @ ${strXycDst} <- ${strXycSrc}`,	// xyc
+			][this.Addressing];
+		}
 	};
 
 }
@@ -266,8 +423,22 @@ namespace Emulator{
 
 namespace Assembler{
 	export class Assembler{
+		Chunks: DataChunk[]	= [];
+
+		LabelList: { [Label: string]: Scope}	= {};
+		["+"]: ScopeLabel[]	= [];
+		["-"]: ScopeLabel[]	= [];
+		Define			= {};
+		NowAddress: number	= 0;
+		NowScopeName: string	= "";
+
 		public static Assemble(code: string): DataChunk[] | null{
 			// TODO: Implements
+
+			// Pass1: split to tokens
+			// Pass2: confirm the address
+			// Pass3: generate binary
+
 			if(true){
 				// DEBUG
 				const token: CodeToken	= {
@@ -276,10 +447,30 @@ namespace Assembler{
 					Address: 0,
 				};
 				const log: Emulator.StepLog = new Emulator.StepLog();
+				log.Registers.SetStatusFlagE(false);	// to native mode
+				//log.Registers.SetStatusFlagM(false);	// to m=8bit
+				log.Operand1	= 0xBBAA;
+				log.Operand2	= 0xCC;
 				console.log(log.GetLogString());
 			}
 			return null;
 		}
+
+	}
+
+	class Token{
+		TokenType: CodeTokenType	= CodeTokenType.Invalid;
+		Line: number	= 0;
+		File: string	= "";
+		Address: number	= 0;
+		Options: (string | number | null)[]	= [];
+	}
+	class Scope{
+		Address: number	= 0;
+		LocalScope: { [LocalLabel: string]: ScopeLabel}	= {};
+	}
+	class ScopeLabel{
+		Address: number	= 0;
 	}
 
 	export type DataChunk = {
@@ -293,6 +484,10 @@ namespace Assembler{
 		DirectiveDataWord,	// ".dw"
 		DirectiveDataLong,	// ".dl"
 		DirectiveDataDouble,	// ".dd"
+		DirectiveMemoryShort,	// ".m8"
+		DirectiveMemoryLong,	// ".m16"
+		DirectiveIndexShort,	// ".i8"
+		DirectiveIndexLong,	// ".i16"
 		LabelGlobal,		// "Xxx:"
 		LabelLocal,		// ".xxx"
 		LabelPlus,		// "+"
@@ -308,5 +503,25 @@ namespace Assembler{
 }
 
 //--------------------------------------------------
+
+// Main program
+
+//--------------------------------------------------
+
+// DEBUG
+function CreateDebugObject(){
+	const log: Emulator.StepLog = new Emulator.StepLog();
+	log.Registers.SetStatusFlagE(false);	// to native mode
+	//log.Registers.SetStatusFlagM(false);	// to m=8bit
+	log.Operand1	= 0xBBAA;
+	log.Operand2	= 0xCC;
+	log.Instruction	= Emulator.Instruction.ADC;
+	log.Addressing	= Emulator.Addressing.DirectpageIndirect;
+	log.Registers.A	= 0x2211;
+	log.Registers.X	= 0x4433;
+	log.Registers.Y	= 0x6655;
+
+	return log;
+}
 
 
