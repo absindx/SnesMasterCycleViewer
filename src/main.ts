@@ -5,6 +5,7 @@
 namespace Utility{
 	export class Type{
 		private static Modulo(v: number, m: number): number{
+			// Floored division
 			return ((v % m) + m) % m;
 		}
 
@@ -22,11 +23,24 @@ namespace Utility{
 			return this.Modulo(v, (2 ** 16));
 		}
 		public static ToShort(v: number): number{
-			v	= this.ToByte(v);
+			v	= this.ToWord(v);
 			if(v >= (2 ** 15)){
 				return -(2 ** 16) + v;
 			}
 			return v;
+		}
+		public static ToUint(v: number): number{
+			return this.Modulo(v, (2 ** 32));
+		}
+		public static ToInt(v: number): number{
+			v	= this.ToUint(v);
+			if(v >= (2 ** 31)){
+				return -(2 ** 32) + v;
+			}
+			return v;
+		}
+		public static ToLong(v: number): number{
+			return this.Modulo(v, (2 ** 24));
 		}
 	}
 	export class Format{
@@ -40,8 +54,139 @@ namespace Utility{
 			return s;
 		}
 	}
-}
+	export class Math{
+		public static IsRange(v: number, s: number, e: number): boolean{
+			return (s <= v) && (v < e);
+		}
+		public static Saturation(v: number, s: number, e: number): number{
+			if(v < s){
+				return s;
+			}
+			if(e < v){
+				return e;
+			}
+			return v;
+		}
+	}
 
+	export class CharacterReadStream{
+		private rawIndex: number	= 0;
+		private readEnd: boolean	= true;
+		private lastRead: string	= '';
+
+		constructor(
+			private allString: string,
+			private position: number = 0,
+			private LiteralCharacters: string[] = ['\"', '\'', ]
+		){
+			this.SetPosition(position);
+		}
+
+		public ResetPosition(){
+			this.rawIndex	= 0;
+			this.position	= 0;
+			this.readEnd	= false;
+			this.lastRead	= '';
+
+			if(this.allString.length <= 0){
+				this.readEnd	= true;
+			}
+		}
+		public SetPosition(position: number){
+			this.ResetPosition();
+			for(let i = 0; i < position; i++){
+				this.Read();
+			}
+		}
+		public GetPosition(): number{
+			return this.position;
+		}
+		public ReadEnd(): boolean{
+			return this.readEnd;
+		}
+
+		public Read(): string | null{
+			let output: string		= '';
+			let enclosingChar: string | null= null;
+			let isEscaping			= false;
+			let i: number;
+
+			if(this.readEnd){
+				return '';
+			}
+
+			for(i = this.rawIndex; i < this.allString.length; i++){
+				const c			= this.allString[i];
+				const isEncloseChar	= this.LiteralCharacters.includes(c);
+				const isEscapeChar	= (c == '\\');
+
+				if(enclosingChar){
+					if(isEscaping){
+						// end escape
+						isEscaping	= false;
+						output	+= c;
+						continue;
+					}
+					if(isEscapeChar){
+						// start escape
+						isEscaping	= true;
+						output	+= c;
+						continue;
+					}
+					if(c == enclosingChar){
+						// end enclose
+						enclosingChar	= null;
+						output	+= c;
+						i++;
+						break;
+					}
+					output	+= c;
+					continue;
+				}
+				if(isEncloseChar){
+					// start enclose
+					enclosingChar	= c;
+					output	+= c;
+					continue;
+				}
+				output	+= c;
+				i++;
+				break;
+			}
+
+			if(enclosingChar){
+				// format error
+				return null;
+			}
+
+			this.rawIndex	= i;
+			this.position++;
+			this.readEnd	= (i >= this.allString.length);
+			this.lastRead	= output;
+
+			return output;
+		}
+		public ReadBack(): string{
+			let index		= this.position - 1;
+			let back		= this.lastRead;
+
+			this.ResetPosition();
+			for(let i = 0; i < index; i++){
+				this.Read();
+			}
+			return back;
+		}
+
+		public Remaining(): string{
+			const clone	= new CharacterReadStream(this.allString, this.position, this.LiteralCharacters);
+			let output	= '';
+			while(!clone.ReadEnd()){
+				output	+= clone.Read();
+			}
+			return output;
+		}
+	}
+}
 
 //--------------------------------------------------
 
@@ -218,7 +363,84 @@ namespace Emulator{
 	};
 
 	export class Memory{
-		// TODO: Implements
+		private AddressSpace: {[Address: number]: number}	= {};
+		ROMMapping: ROMMapping	= ROMMapping.LoROM;
+		IsFastROM: boolean	= false;
+
+		AddressBus: number	= 0;
+		DataBus: number		= 0;
+
+		public ReadByte(address: number): MemoryReadResult{
+			// TODO: hook I/O
+			const data	= this.AddressSpace[address] ?? 0;
+			const speed	= this.UpdateBus(address, data);
+			const result: MemoryReadResult	= {
+				Data: data,
+				Speed: speed,
+			};
+			return result;
+		}
+
+		public WriteValue(address: number, data: number): MemoryWriteResult{
+			// TODO: hook I/O
+			const speed	= this.UpdateBus(address, data);
+			this.AddressSpace[address]	= data;
+			const result: MemoryWriteResult	= {
+				Speed: speed,
+			};
+			return result;
+		}
+
+		private UpdateBus(address: number, data: number): AccessSpeed{
+			// Reference:
+			// 	https://wiki.superfamicom.org/memory-mapping
+
+			address		= Utility.Type.ToLong(address);
+			data		= Utility.Type.ToByte(data);
+
+			let speed	= (this.IsFastROM)? AccessSpeed.Fast : AccessSpeed.Slow;
+
+			const bank	= address >> 16;
+			const page	= address && 0x00FFFF;
+			if(bank <= 0x3F){
+				if(     page <= 0x1FFF){ speed	= AccessSpeed.Slow;	}	// $00-3F:0000-1FFF
+				else if(page <= 0x20FF){ speed	= AccessSpeed.Fast;	}	// $00-3F:2000-20FF
+				else if(page <= 0x21FF){ speed	= AccessSpeed.Fast;	}	// $00-3F:2100-21FF
+				else if(page <= 0x3FFF){ speed	= AccessSpeed.Fast;	}	// $00-3F:2200-3FFF
+				else if(page <= 0x41FF){ speed	= AccessSpeed.XSlow;	}	// $00-3F:4000-41FF
+				else if(page <= 0x43FF){ speed	= AccessSpeed.Fast;	}	// $00-3F:4200-43FF
+				else if(page <= 0x5FFF){ speed	= AccessSpeed.Fast;	}	// $00-3F:4400-5FFF
+				else if(page <= 0x7FFF){ speed	= AccessSpeed.Slow;	}	// $00-3F:6000-7FFF
+				else if(page <= 0xFFFF){ speed	= AccessSpeed.Slow;	}	// $00-3F:8000-FFFF
+			}
+			else if(bank <= 0x7D){
+				speed	= AccessSpeed.Slow;					// $40-7D:0000-FFFF
+			}
+			else if(bank <= 0x7F){
+				speed	= AccessSpeed.Slow;					// $7E-7F:0000-FFFF
+			}
+			else if(bank <= 0xBF){
+				if(     page <= 0x1FFF){ speed	= AccessSpeed.Slow;	}	// $80-BF:0000-1FFF
+				else if(page <= 0x20FF){ speed	= AccessSpeed.Fast;	}	// $80-BF:2000-20FF
+				else if(page <= 0x21FF){ speed	= AccessSpeed.Fast;	}	// $80-BF:2100-21FF
+				else if(page <= 0x3FFF){ speed	= AccessSpeed.Fast;	}	// $80-BF:2200-3FFF
+				else if(page <= 0x41FF){ speed	= AccessSpeed.XSlow;	}	// $80-BF:4000-41FF
+				else if(page <= 0x43FF){ speed	= AccessSpeed.Fast;	}	// $80-BF:4200-43FF
+				else if(page <= 0x5FFF){ speed	= AccessSpeed.Fast;	}	// $80-BF:4400-5FFF
+				else if(page <= 0x7FFF){ speed	= AccessSpeed.Slow;	}	// $80-BF:6000-7FFF
+				else if(page <= 0xFFFF){ /* MEMSEL: Fast or Slow */	}	// $80-BF:8000-FFFF
+			}
+			else if(bank <= 0xFF){
+				/* MEMSEL: Fast or Slow */					// $C0-FF:0000-FFFF
+			}
+
+			// update bus
+			// TODO: Emulate PPU1, 2 MDR
+			this.AddressBus	= address;
+			this.DataBus	= data;
+
+			return speed;
+		}
 	}
 
 	export enum Addressing{
@@ -470,8 +692,22 @@ namespace Emulator{
 		Slow	= 8,
 		XSlow	= 12,
 	}
+	export enum ROMMapping{
+		LoROM,
+		HiROM,
+		// ExLoROM,
+		// ExHiROM,
+	}
+	type MemoryReadResult = {
+		Data: number;	// byte
+		Speed: AccessSpeed;
+	}
+	type MemoryWriteResult = {
+		Speed: AccessSpeed;
+	}
 
 }
+
 //--------------------------------------------------
 
 namespace Assembler{
@@ -490,8 +726,6 @@ namespace Assembler{
 
 		ErrorMessages: ErrorMessage[]	= [];
 
-		private constructor(){}
-
 		public static Assemble(code: string): DataChunk[] | ErrorMessage[]{
 			let lex	= new Assembler();
 
@@ -499,14 +733,15 @@ namespace Assembler{
 			if(!lex.SplitTokens(code)){
 				return lex.ErrorMessages;
 			}
+			lex.DumpTokens();
 
 			// Pass2: confirm the address
-			// if(!lex.ConfirmAddress(code)){
+			// if(!lex.ConfirmAddress()){
 			// 	return lex.ErrorMessages;
 			// }
 
 			// Pass3: generate binary
-			// if(!lex.GenerateBinary(code)){
+			// if(!lex.GenerateBinary()){
 			// 	return lex.ErrorMessages;
 			// }
 
@@ -525,6 +760,7 @@ namespace Assembler{
 					TokenType: tokenType,
 					File: file,
 					Line: lineNumber + 1,
+					Source: lines[lineNumber],
 					Address: 0,
 					Options: options,
 				});
@@ -533,6 +769,7 @@ namespace Assembler{
 				this.ErrorMessages.push({
 					File: file,
 					Line: lineNumber + 1,
+					Source: lines[lineNumber],
 					Message: message,
 				});
 			}
@@ -575,15 +812,16 @@ namespace Assembler{
 			pushToken: (tokenType: CodeTokenType, options: (string | number | null)[]) => void,
 			pushError: (message: string) => void,
 		): string | null{
-			let directive	= '';
-			let remain	= '';
-			let param	= '';
+			let directive: string	= '';
+			let remain: string	= '';
+			let param: string	= '';
+			let params: string[]	= [];
 
-			[directive, remain]	= Assembler.SplitSpace(line);
+			[directive, remain]	= Assembler.SplitOnce(line);
 
 			switch(directive){
 				case '.org':{
-					[param, remain]	= Assembler.SplitSpace(remain);
+					[param, remain]	= Assembler.SplitOnce(remain);
 					if(param.length <= 0){
 						pushError(`Parameter not found. (${directive})`);
 						return '';
@@ -592,6 +830,25 @@ namespace Assembler{
 					pushToken(CodeTokenType.DirectiveOrigin, [param]);
 					break;
 				}
+
+				case '.db':
+				case '.dw':
+				case '.dl':
+				case '.dd':
+
+				case '.m8':
+					pushToken(CodeTokenType.DirectiveMemoryShort, []);
+					break;
+				case '.m16':
+					pushToken(CodeTokenType.DirectiveMemoryLong, []);
+					break;
+				case '.i8':
+					pushToken(CodeTokenType.DirectiveIndexShort, []);
+					break;
+				case '.i16':
+					pushToken(CodeTokenType.DirectiveIndexLong, []);
+					break;
+
 				default:
 					return null;
 			}
@@ -604,43 +861,18 @@ namespace Assembler{
 			// remove contiguous space
 			// remove first and last space
 
+			const reader	= new Utility.CharacterReadStream(str);
 			let output	= '';
 
-			let encloseChar: string | null	= null;
-			let isEscaping			= false;
-			for(let i = 0; i < str.length; i++){
-				const c			= str[i];
+			while(!reader.ReadEnd()){
+				const c			= reader.Read();
+				if(c == null){
+					// invalid format
+					return null;
+				}
+
 				const prevChar		= output[output.length - 1];
-				const isEncloseChar	= (c == '\"') || (c == '\'');
 				const isSpace		= c.trim().length <= 0;
-				if(encloseChar){
-					if(isEscaping){
-						// end escape
-						isEscaping	= false;
-						output	+= c;
-						continue;
-					}
-					if(c == '\\'){
-						// start escape
-						isEscaping	= true;
-						output	+= c;
-						continue;
-					}
-					if(c == encloseChar){
-						// end enclose
-						encloseChar	= null;
-						output	+= c;
-						continue;
-					}
-					output	+= c;
-					continue;
-				}
-				if(isEncloseChar){
-					// start enclose
-					encloseChar	= c;
-					output	+= c;
-					continue;
-				}
 				if(isSpace){
 					if(prevChar !== ' '){
 						output	+= ' ';
@@ -651,6 +883,7 @@ namespace Assembler{
 						continue;
 					}
 				}
+
 				if(c == ';'){
 					// comment
 					break;
@@ -670,36 +903,81 @@ namespace Assembler{
 				output	+= c;
 			}
 
-			if(encloseChar){
-				return null;
-			}
-
 			return output.trim();
 		}
-		private static SplitSpace(str: string): [string, string]{
-			let splitted: [string, string]	= [str, ''];
+		private static SplitOnce(str: string, splits: string[] = [' ']): [string, string]{
+			const reader	= new Utility.CharacterReadStream(str);
 
-			const splitIndex	= str.indexOf(' ');
-			if(splitIndex >= 0){
-				const left	= str.substring(0, splitIndex);
-				const right	= str.substring(splitIndex + 1);
-				splitted	= [left, right];
+			let left	= '';
+			let right	= '';
+
+			while(!reader.ReadEnd()){
+				const c		= reader.Read();
+				if(!c){
+					break;
+				}
+
+				if(splits.includes(c)){
+					break;
+				}
+				else{
+					left	+= c;
+				}
+			}
+			right	= reader.Remaining();
+
+			return [left, right];
+		}
+		private static SplitAll(str: string, splits: string[] = [' '], skipBlank: boolean = false): string[]{
+			const reader	= new Utility.CharacterReadStream(str);
+			const list: string[]	= [];
+			let item	= '';
+
+			while(!reader.ReadEnd()){
+				const c		= reader.Read();
+				if(!c){
+					break;
+				}
+
+				if(splits.includes(c)){
+					if((!skipBlank) || (item.length > 0)){
+						list.push(item);
+					}
+					item	= '';
+				}
+				else{
+					item	+= c;
+				}
 			}
 
-			return splitted;
+			if((!skipBlank) || (item.length > 0)){
+				list.push(item);
+			}
+
+			return list;
+		}
+
+		// TODO: DEBUG
+		private DumpTokens(){
+			for(let i = 0; i < this.Tokens.length; i++){
+				const t	= this.Tokens[i];
+				console.log(`[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`);
+			}
 		}
 
 	}
 	type ErrorMessage = {
 		File: string;
 		Line: number;
+		Source: string;
 		Message: string;
 	}
 
 	class Token{
 		TokenType: CodeTokenType	= CodeTokenType.Invalid;
-		File: string	= "";
+		File: string	= '';
 		Line: number	= 0;
+		Source: string	= ''
 		Address: number	= 0;
 		Options: (string | number | null)[]	= [];
 	}
@@ -760,6 +1038,27 @@ function CreateDebugObject(){
 	log.Registers.Y	= 0x6655;
 
 	return log;
+}
+
+function DebugAsseble(){
+	const code	= `
+		.org $008000	; code start
+;EmulationRST:
+;		SEI
+;		REP	#$CB
+;		XCE
+;		SEP	#$34
+		.m8
+		.i8
+;		LDA.b	#$12	; A9 12
+;		LDA	#$1234	; A9 34
+;		REP	#$20
+		.m16
+;		LDA.b	#1234	; A9 D2
+;		LDA	#5678	; A9 2E 16
+;		STP
+	`;
+	const assemble	= Assembler.Assembler.Assemble(code);
 }
 
 
