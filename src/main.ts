@@ -718,11 +718,11 @@ namespace Assembler{
 		Tokens: Token[]		= [];
 
 		LabelList: { [Label: string]: Scope}	= {};
-		["+"]: ScopeLabel[]	= [];
-		["-"]: ScopeLabel[]	= [];
-		Define			= {};
-		NowAddress: number	= 0;
-		NowScopeName: string	= "";
+		PlusLabelList: ScopeLabel[]		= [];
+		MinusLabelList: ScopeLabel[]		= [];
+		Define					= {};
+		NowAddress: number			= 0;
+		NowScopeName: string			= '';
 
 		ErrorMessages: ErrorMessage[]	= [];
 
@@ -733,6 +733,11 @@ namespace Assembler{
 			if(!lex.SplitTokens(code)){
 				return lex.ErrorMessages;
 			}
+			// clear status
+			lex.NowAddress		= 0;
+			lex.NowScopeName	= '';
+
+			// TODO: for DEBUG
 			lex.DumpTokens();
 
 			// Pass2: confirm the address
@@ -790,11 +795,16 @@ namespace Assembler{
 
 					// check directive
 					if((checkRemain = this.CheckDirective(remain, pushToken, pushError)) !== null){
-						remain	= checkRemain;
+						remain	= checkRemain.trim();
 						continue;
 					}
 
 					// check label
+					if((checkRemain = this.CheckLabel(remain, pushToken, pushError)) !== null){
+						remain	= checkRemain.trim();
+						continue;
+					}
+
 					// check instruction
 					// check define
 
@@ -819,6 +829,12 @@ namespace Assembler{
 
 			[directive, remain]	= Assembler.SplitOnce(line);
 
+			function pushDataArray(tokenType: CodeTokenType){
+				const splits	= Assembler.SplitAll(remain, [',', ' '], false);
+				pushToken(tokenType, splits);
+				remain	= '';
+			}
+
 			switch(directive){
 				case '.org':{
 					[param, remain]	= Assembler.SplitOnce(remain);
@@ -832,9 +848,17 @@ namespace Assembler{
 				}
 
 				case '.db':
+					pushDataArray(CodeTokenType.DirectiveDataByte);
+					break;
 				case '.dw':
+					pushDataArray(CodeTokenType.DirectiveDataWord);
+					break;
 				case '.dl':
+					pushDataArray(CodeTokenType.DirectiveDataLong);
+					break;
 				case '.dd':
+					pushDataArray(CodeTokenType.DirectiveDataDouble);
+					break;
 
 				case '.m8':
 					pushToken(CodeTokenType.DirectiveMemoryShort, []);
@@ -854,6 +878,64 @@ namespace Assembler{
 			}
 
 			return remain;
+		}
+		private CheckLabel(
+			line: string,
+			pushToken: (tokenType: CodeTokenType, options: (string | number | null)[]) => void,
+			pushError: (message: string) => void,
+		): string | null{
+			const [word, remain]	= Assembler.SplitOnce(line);
+			const match		= line.match(/^([^\s]+):\s*(.*)/);
+
+			if(match){
+				// global label
+				const globalLabel	= match[1];
+				const remain		= match[2];
+				if(globalLabel.match(/[\+\-*/%<>\|\^#$\.]/)){
+					pushError('Invalid label name.');
+					return '';
+				}
+				else if(this.LabelList[globalLabel]){
+					pushError('Global label name conflict.');
+					return '';
+				}
+				const scope			= new Scope();
+				this.LabelList[globalLabel]	= scope;
+				this.NowScopeName		= globalLabel;
+				pushToken(CodeTokenType.LabelGlobal, [globalLabel]);
+				return remain;
+			}
+			else if(word[0] === '.'){
+				// local label
+				const localLabel		= word;
+				if(localLabel.match(/[\+\-*/%<>\|\^#$]/)){
+					pushError('Invalid label name.');
+					return '';
+				}
+				else if((!this.NowScopeName) || (!this.LabelList[this.NowScopeName])){
+					pushError('Local label used in global scope.');
+					return '';
+				}
+				else if(this.LabelList[this.NowScopeName].LocalScope[localLabel]){
+					pushError('Local label name conflict.');
+					return '';
+				}
+				const label			= new ScopeLabel();
+				this.LabelList[this.NowScopeName].LocalScope[localLabel]	= label;
+				pushToken(CodeTokenType.LabelLocal, [localLabel]);
+				return remain;
+			}
+			else if(word === '+'){
+				// plus label
+				pushToken(CodeTokenType.LabelPlus, []);
+				return remain;
+			}
+			else if(word === '-'){
+				// minus label
+				pushToken(CodeTokenType.LabelMinus, []);
+				return remain;
+			}
+			return null;
 		}
 
 		private static NormalizeString(str: string): string | null{
@@ -940,7 +1022,9 @@ namespace Assembler{
 				}
 
 				if(splits.includes(c)){
-					if((!skipBlank) || (item.length > 0)){
+					const isPush	= (!skipBlank) || (item.length > 0);
+					const space	= (item.length <= 0) && (c === ' ');
+					if(isPush && !space){
 						list.push(item);
 					}
 					item	= '';
@@ -957,7 +1041,7 @@ namespace Assembler{
 			return list;
 		}
 
-		// TODO: DEBUG
+		// TODO: for DEBUG
 		private DumpTokens(){
 			for(let i = 0; i < this.Tokens.length; i++){
 				const t	= this.Tokens[i];
@@ -1043,20 +1127,42 @@ function CreateDebugObject(){
 function DebugAsseble(){
 	const code	= `
 		.org $008000	; code start
-;EmulationRST:
-;		SEI
-;		REP	#$CB
-;		XCE
-;		SEP	#$34
+EmulationRST:
+;		SEI		; 78
+;		REP	#$CB	; C2 CB
+;		XCE		; FB
+;		SEP	#$34	; E2
 		.m8
 		.i8
 ;		LDA.b	#$12	; A9 12
 ;		LDA	#$1234	; A9 34
-;		REP	#$20
-		.m16
-;		LDA.b	#1234	; A9 D2
+;		REP	#$20	; C2 20
+		.m16 .i8
+-
+;-		LDA.b	#1234	; A9 D2
 ;		LDA	#5678	; A9 2E 16
-;		STP
+;		BNE	-	; D0 F9
++
+;+		NOP		; EA
+;		BRA	+	; 80 00
++
+;+		BRL	-	; 82 F3 FF
+.Inf
+;.Inf		JMP	.Inf	; 4C 19 80
+;		JSR	Test	; 20 40 80
+;		JSL	Test	; 22 40 80 00
+		.db	1, 2, $3, "ABC", Test	; 01 02 03 41 42 43 40
+		.dw	1, 2, $3, "ABC", Test	; 01 00 02 00 03 00 41 00 42 00 43 00 40 80
+		.dl	1, 2, $3, "ABC", Test	; 01 00 00 02 00 00 03 00 00 41 00 00 42 00 00 43 00 00 40 80 00
+		.dd	1, 2, $3, "ABC", Test	; 01 00 00 00 02 00 00 00 03 00 00 00 41 00 00 00 42 00 00 00 43 00 00 00 40 80 00 00
+		.org $008040
+Test:
+Test:
+.Inf
+.Inf
+;.Inf		JML	.Inf	; 5C 40 80 00
++
+;		STP		; DB
 	`;
 	const assemble	= Assembler.Assembler.Assemble(code);
 }
