@@ -485,8 +485,8 @@ namespace Emulator{
 		XBA, XCE,
 	}
 	export const InstructionTable: {[Instruction: string]: (number | null)[]}	= {
-	//     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,Y       (abs,X)     long        rel         sr,S        xyc
-	//                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y     	   Flags
+	//     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,Y       (abs,X)     long        rel         sr,S        xyc    	   Flags
+	//                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y
 		'ADC': [ null, null, null, null, 0x69, null, 0x65, 0x75, null, 0x72, 0x61, 0x71, 0x67, 0x77, 0x6D, 0x7D, 0x79, null, null, null, 0x6F, 0x7F, null, null, 0x63, 0x73, null ],	// NV----ZC
 		'AND': [ null, null, null, null, 0x29, null, 0x25, 0x35, null, 0x32, 0x21, 0x31, 0x27, 0x37, 0x2D, 0x3D, 0x39, null, null, null, 0x2F, 0x3F, null, null, 0x23, 0x33, null ],	// N-----Z-
 		'ASL': [ null, 0x0A, null, null, null, null, 0x06, 0x16, null, null, null, null, null, null, 0x0E, 0x1E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
@@ -974,8 +974,8 @@ namespace Assembler{
 				return null;
 			}
 
-			const instructionName		= instructionMatch[1];
-			const instructionLength		= instructionMatch[3];	// no point
+			const instructionName		= instructionMatch[1].toUpperCase();
+			const instructionLength		= (instructionMatch[3] ?? '').toLowerCase();	// no point
 			let remain			= instructionMatch[4];
 
 			const instruction		= Assembler.StringToInstruction(instructionName);
@@ -1003,15 +1003,14 @@ namespace Assembler{
 					const remainIndex	= (operandMatch.length <= 4)? 3 : 4;
 					remain	= operandMatch[remainIndex];
 
-					const operand1	= operandMatch[2].trim();
-					const operand2	= operandMatch[3].trim();
-					const instructionToken: InstructionToken	= {
-						Instruction:		instruction,
-						AddressingLength:	addressingLength,
-						Addressing:		instructionPattern.Addressing,
-						Operand1:		operand1,
-						Operand2:		operand2,
-					};
+					const operand1		= operandMatch[2].trim();
+					const operand2		= operandMatch[3].trim();
+					const instructionToken 	= new InstructionToken(
+						instruction,
+						instructionPattern.Addressing,
+						addressingLength,
+						operand1, operand2,
+					);
 					pushToken(CodeTokenType.Instruction, [instructionToken]);
 					return remain;
 				}
@@ -1136,9 +1135,33 @@ namespace Assembler{
 		}
 
 		private static InstructionPatternList: InstructionPattern[] = [
-		//	Pattern					Addressing						Fallback
+		//	Pattern								Addressing							Fallback
 		//	Label:	([^,]+)
-			{Pattern: `(([^,]+),\s*([^,]+))`,	Addressing: Emulator.Addressing.BlockMove,		Fallback: false	},
+			{Pattern: `(([^,]+),\\s*([^,]+))`,				Addressing: Emulator.Addressing.BlockMove,			Fallback: false	},	// "src, dst"
+			{Pattern: `([Aa]])`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: false	},	// "A"
+			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.Immediate8,			Fallback: true	},	// "#xx"	// #imm8 (REP, SEP, ...)
+			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateMemory,		Fallback: true	},	// "#xx"	// #immM (LDA, STA, ...)
+			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateIndex,			Fallback: false	},	// "#xx"	// #immX (LDX, STX, ...)
+			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.DirectpageIndexedIndirectX,	Fallback: true	},	// "(xx, X)"	// dp
+			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.AbsoluteIndexedIndirect,	Fallback: false	},	// "(xx, X)"	// abs
+			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Ss]\\s*\\)\\s*,\\s*[Yy])`,	Addressing: Emulator.Addressing.StackRelativeIndirectIndexedY,	Fallback: false	},	// "(xx, S), Y"
+			{Pattern: `(\\(\\s*([^,]+)\\s*\\)\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectIndexedY,	Fallback: false	},	// "(xx), Y"
+			{Pattern: `(\\[\\s*([^,]+)\\s*\\]\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectLongIndexedY,	Fallback: false	},	// "[xx], Y"
+			{Pattern: `(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.DirectpageIndirect,		Fallback: true	},	// "(xx)"	// dp
+			{Pattern: `(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.AbsoluteIndirect,		Fallback: false	},	// "(xx)"	// abs
+			{Pattern: `(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.AbsoluteIndirectLong,		Fallback: true	},	// "[xx]"	// dp
+			{Pattern: `(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.DirectpageIndirectLong,		Fallback: false	},	// "[xx]"	// abs
+			{Pattern: `(([^,]+)\\s*,\\s*[Xx])`,				Addressing: Emulator.Addressing.DirectpageIndexedX,		Fallback: false	},	// "xx, X"	// dp, abs, long
+			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.DirectpageIndexedY,		Fallback: true	},	// "xx, Y"	// dp
+			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.AbsoluteIndexedY,		Fallback: false	},	// "xx, Y"	// abs
+			{Pattern: `(([^,]+)\\s*,\\s*[Ss])`,				Addressing: Emulator.Addressing.StackRelative,			Fallback: false	},	// "xx, S"
+			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Relative,			Fallback: true	},	// "xx"		// rel
+			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.RelativeLong,			Fallback: true	},	// "xx"		// rlong
+			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Directpage,			Fallback: true	},	// "xx"		// dp
+			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Absolute,			Fallback: true	},	// "xx"		// abs
+			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.AbsoluteLong,			Fallback: false	},	// "xx"		// long
+			{Pattern: `(())`,						Addressing: Emulator.Addressing.Stack,				Fallback: true	},	// ""
+			{Pattern: `(())`,						Addressing: Emulator.Addressing.Implied,			Fallback: false	},	// ""
 		];
 
 		private static StringToInstruction(str: string): Emulator.Instruction | null{
@@ -1156,7 +1179,13 @@ namespace Assembler{
 		private DumpTokens(){
 			for(let i = 0; i < this.Tokens.length; i++){
 				const t	= this.Tokens[i];
-				console.log(`[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`);
+				let l	= `[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
+
+				if(t.Options[0] instanceof InstructionToken){
+					l	+= '\n' + t.Options[0].ToString();
+				}
+
+				console.log(l);
 			}
 		}
 		// TODO: for DEBUG
@@ -1211,6 +1240,13 @@ namespace Assembler{
 			public Operand1: string		= '',
 			public Operand2: string		= '',
 		){}
+
+		public ToString(): string{
+			// for Debug
+			return `${Emulator.Instruction[this.Instruction]}`
+				+ ` ${Emulator.Addressing[this.Addressing]} (${AddressingLength[this.AddressingLength]})`
+				+ ` [${this.Operand1}, ${this.Operand2}]`;
+		}
 	}
 	enum AddressingLength{
 		None,
@@ -1265,40 +1301,65 @@ function DebugAsseble(){
 	const code	= `
 		.org $008000	; code start
 EmulationRST:
-;		SEI		; 78
-;		REP	#$CB	; C2 CB
-;		XCE		; FB
-;		SEP	#$34	; E2
+		SEI		; 78
+		REP	#$CB	; C2 CB
+		XCE		; FB
+		SEP	#$34	; E2
 		.m8
 		.i8
-;		LDA.b	#$12	; A9 12
-;		LDA	#$1234	; A9 34
-;		REP	#$20	; C2 20
+		LDA.b	#$12	; A9 12
+		LDA	#$1234	; A9 34
+		REP	#$20	; C2 20
 		.m16 .i8
 -
-;-		LDA.b	#1234	; A9 D2
-;		LDA	#5678	; A9 2E 16
-;		BNE	-	; D0 F9
+-		LDA.b	#1234	; A9 D2
+		LDA	#5678	; A9 2E 16
+		BNE	-	; D0 F9
 +
-;+		NOP		; EA
-;		BRA	+	; 80 00
++		NOP		; EA
+		BRA	+	; 80 00
 +
-;+		BRL	-	; 82 F3 FF
-.Inf
-;.Inf		JMP	.Inf	; 4C 19 80
-;		JSR	Test	; 20 40 80
-;		JSL	Test	; 22 40 80 00
++		BRL	-	; 82 F3 FF
+;.Inf
+.Inf		JMP	.Inf	; 4C 19 80
+		JSR	Test	; 20 40 80
+		JSL	Test	; 22 40 80 00
 		.db	1, 2, $3, "ABC", Test	; 01 02 03 41 42 43 40
 		.dw	1, 2, $3, "ABC", Test	; 01 00 02 00 03 00 41 00 42 00 43 00 40 80
 		.dl	1, 2, $3, "ABC", Test	; 01 00 00 02 00 00 03 00 00 41 00 00 42 00 00 43 00 00 40 80 00
 		.dd	1, 2, $3, "ABC", Test	; 01 00 00 00 02 00 00 00 03 00 00 00 41 00 00 00 42 00 00 00 43 00 00 00 40 80 00 00
 		.org $008040
 Test:	.Start
-.Inf
+;.Inf
+.Inf		JML	.Inf	; 5C 40 80 00
 		MVP	$7E, $7F; 44 7F 7E	; src, dst ($7F <- $7E)
-;.Inf		JML	.Inf	; 5C 40 80 00
 +
-;		STP		; DB
+		STP		; DB
+
+		.i8
+		LDX.b	#$1234	; A2 34
+		LDX.w	#$5678	; A2 78 56
+		LDX	#$ABCD	; A2 34
+		.i16
+		LDX.b	#$1234	; A2 34
+		LDX.w	#$5678	; A2 78 56
+		LDX	#$ABCD	; A2 78 56
+		.i8
+		LDX	#$1234	; A2 34
+
+		.i8
+		LDY.b	#$1234	; A0 34
+		LDY.w	#$5678	; A0 78 56
+		LDY	#$ABCD	; A0 34
+		.i16
+		LDY.b	#$1234	; A0 34
+		LDY.w	#$5678	; A0 78 56
+		LDY	#$ABCD	; A0 78 56
+		.i8
+		LDY	#$1234	; A0 34
+
+		PEA	Test	; F4 40 80
+		RTS		; 60
 	`;
 	const assemble	= Assembler.Assembler.Assemble(code);
 }
