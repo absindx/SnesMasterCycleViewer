@@ -717,13 +717,13 @@ namespace Assembler{
 
 		Tokens: Token[]		= [];
 
-		LabelList: { [Label: string]: Scope}	= {};
-		PlusLabelList: ScopeLabel[]		= [];
-		MinusLabelList: ScopeLabel[]		= [];
-		Define					= {};
-		NowAddress: number			= 0;
-		NowScopeName: string			= '';
-		NowDirectPage: number			= 0;
+		LabelList: { [Label: string]: ScopeItem}	= {};
+		PlusLabelList: LocalScopeItem[]			= [];
+		MinusLabelList: LocalScopeItem[]		= [];
+		DefineList: { [Define: string]: DefineItem }	= {};
+		NowAddress: number				= 0;
+		NowScopeName: string				= '';
+		NowDirectPage: number				= 0;
 
 		ErrorMessages: ErrorMessage[]	= [];
 
@@ -926,7 +926,7 @@ namespace Assembler{
 					pushError('Global label name conflict.');
 					return '';
 				}
-				const scope			= new Scope();
+				const scope			= new ScopeItem();
 				this.LabelList[globalLabel]	= scope;
 				this.NowScopeName		= globalLabel;
 				pushToken(CodeTokenType.LabelGlobal, [globalLabel]);
@@ -947,7 +947,7 @@ namespace Assembler{
 					pushError('Local label name conflict.');
 					return '';
 				}
-				const label			= new ScopeLabel();
+				const label			= new LocalScopeItem();
 				this.LabelList[this.NowScopeName].LocalScope[localLabel]	= label;
 				pushToken(CodeTokenType.LabelLocal, [localLabel]);
 				return remain;
@@ -1027,8 +1027,31 @@ namespace Assembler{
 			pushToken: (tokenType: CodeTokenType, options: (string | number | TokenOption | null)[]) => void,
 			pushError: (message: string) => void,
 		): string | null{
-			// TODO: Implements
-			return null;
+			const defineMatch	= line.match(/([^\s,]+)\s*=\s*([^,]+)(.*)/);
+			if(!defineMatch){
+				return null;
+			}
+
+			const defineName	= defineMatch[1];
+			const defineValue	= defineMatch[2];
+			const remain		= defineMatch[3];
+
+			if(defineName.match(/[+\-*/<>\(\)\[\]\{\}\"#$%&\'\|^]/)){
+				pushError('Invalid define name.');
+				return '';
+			}
+			else if(this.DefineList[defineName]){
+				pushError('Define name conflict.');
+				return '';
+			}
+
+			const define	= new DefineItem();
+			define.Value	= defineValue;
+			this.DefineList[defineName]	= define;
+
+			pushToken(CodeTokenType.Define, [defineName]);
+
+			return remain;
 		}
 
 		private static NormalizeString(str: string): string | null{
@@ -1137,7 +1160,6 @@ namespace Assembler{
 		private static InstructionPatternList: InstructionPattern[] = [
 		//	Pattern								Addressing							Fallback
 		//	Label:	([^,]+)
-			{Pattern: `(([^,]+),\\s*([^,]+))`,				Addressing: Emulator.Addressing.BlockMove,			Fallback: false	},	// "src, dst"
 			{Pattern: `([Aa]])`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: false	},	// "A"
 			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.Immediate8,			Fallback: true	},	// "#xx"	// #imm8 (REP, SEP, ...)
 			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateMemory,		Fallback: true	},	// "#xx"	// #immM (LDA, STA, ...)
@@ -1155,6 +1177,7 @@ namespace Assembler{
 			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.DirectpageIndexedY,		Fallback: true	},	// "xx, Y"	// dp
 			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.AbsoluteIndexedY,		Fallback: false	},	// "xx, Y"	// abs
 			{Pattern: `(([^,]+)\\s*,\\s*[Ss])`,				Addressing: Emulator.Addressing.StackRelative,			Fallback: false	},	// "xx, S"
+			{Pattern: `(([^,]+),\\s*([^,]+))`,				Addressing: Emulator.Addressing.BlockMove,			Fallback: false	},	// "src, dst"
 			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Relative,			Fallback: true	},	// "xx"		// rel
 			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.RelativeLong,			Fallback: true	},	// "xx"		// rlong
 			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Directpage,			Fallback: true	},	// "xx"		// dp
@@ -1255,12 +1278,16 @@ namespace Assembler{
 		Long,
 	}
 
-	class Scope{
+	class ScopeItem{
 		Address: number	= 0;
-		LocalScope: { [LocalLabel: string]: ScopeLabel}	= {};
+		LocalScope: { [LocalLabel: string]: LocalScopeItem}	= {};
 	}
-	class ScopeLabel{
+	class LocalScopeItem{
 		Address: number	= 0;
+	}
+
+	class DefineItem{
+		Value: number | string	= 0;
 	}
 
 	export type DataChunk = {
@@ -1360,6 +1387,15 @@ Test:	.Start
 
 		PEA	Test	; F4 40 80
 		RTS		; 60
+
+LabelA		= $0123
+!LabelB		= $AABB
+LabelC		= LabelA + 1
+		LDA	LabelA		; AD 23 01
+		STA	!LabelB		; 8D BB AA
+		LDA	LabelC		; AD 24 01
+		STA	!LabelB, X	; 9D BB AA
+
 	`;
 	const assemble	= Assembler.Assembler.Assemble(code);
 }
