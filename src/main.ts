@@ -721,43 +721,74 @@ namespace Assembler{
 		PlusLabelList: LocalScopeItem[]			= [];
 		MinusLabelList: LocalScopeItem[]		= [];
 		DefineList: { [Define: string]: DefineItem }	= {};
-		NowAddress: number				= 0;
 		NowScopeName: string				= '';
+		NowAddress: number				= 0;
 		NowDirectPage: number				= 0;
+		/** true=8bit / false=16bit */
+		NowMemoryLength: boolean			= true;
+		/** true=8bit / false=16bit */
+		NowIndexLength: boolean				= true;
 
 		ErrorMessages: ErrorMessage[]	= [];
 
+		public static Verbose: boolean			= false;
+
 		public static Assemble(code: string): DataChunk[] | ErrorMessage[]{
-			let lex	= new Assembler();
+			const lex	= new Assembler();
+
+			const passStart		= (pass: number) => {
+				if(Assembler.Verbose){
+					console.log(`%c----- Pass ${pass} -------------------------------------`, 'background-color: silver');
+				}
+				lex.ResetLexicalStatus();
+			}
+			const passFinish	= () => {
+				if(Assembler.Verbose){
+					lex.DumpTokens();
+				}
+			}
+			const dumpError		= () => {
+				const consoleErrorLog	= (message: string) => {
+					console.log('%c' + message, 'color: red');
+				}
+				if(Assembler.Verbose){
+					lex.DumpErrors(consoleErrorLog);
+				}
+			}
 
 			// Pass1: split to tokens
+			passStart(1);
 			if(!lex.SplitTokens(code)){
-				// TODO: for DEBUG
-				lex.DumpErrors();
+				dumpError();
 				return lex.ErrorMessages;
 			}
-			lex.ResetLexicalStatus();
+			passFinish();
 
-			// TODO: for DEBUG
-			lex.DumpTokens();
-
-			// Pass2: confirm the address
-			// if(!lex.ConfirmAddress()){
-			// 	return lex.ErrorMessages;
-			// }
+			// Pass2: confirm the addresses
+			passStart(2);
+			if(!lex.ConfirmAddress()){
+				dumpError();
+				return lex.ErrorMessages;
+			}
+			passFinish();
 
 			// Pass3: generate binary
+			// passStart(3);
 			// if(!lex.GenerateBinary()){
+			// 	dumpError();
 			// 	return lex.ErrorMessages;
 			// }
+			// passFinish();
 
 			return lex.Chunks;
 		}
 
 		private ResetLexicalStatus(){
-			this.NowAddress		= 0;
 			this.NowScopeName	= '';
+			this.NowAddress		= 0;
 			this.NowDirectPage	= 0;
+			this.NowMemoryLength	= true;
+			this.NowIndexLength	= true;
 		}
 
 		private SplitTokens(code: string, file: string = 'input.asm'): boolean{
@@ -1054,6 +1085,140 @@ namespace Assembler{
 			return remain;
 		}
 
+		private ConfirmAddress(): boolean{
+			let token: Token;
+			const pushError		= (message: string) => {
+				this.ErrorMessages.push({
+					File: token.File,
+					Line: token.Line,
+					Source: token.Source,
+					Message: message,
+				});
+			}
+			const pushTypeError	= () => {
+				pushError('Type mismatch.');
+			}
+
+			for(let i = 0; i < this.Tokens.length; i++){
+				token		= this.Tokens[i];
+				token.Address	= this.NowAddress;
+				switch(token.TokenType){
+					case CodeTokenType.DirectiveOrigin: {		// ".org"
+						const param		= token.Options[0];
+						if((typeof(param) !== 'string') && (typeof(param) !== 'number')){
+							pushTypeError();
+							break;
+						}
+						const [value, message]	= this.ResolveValue(param);
+						if(value){
+							this.NowAddress		= value;
+							token.Address		= value;
+							token.Options[0]	= value;
+						}
+						else{
+							pushError(message);
+							break;
+						}
+
+						break;
+					}
+					case CodeTokenType.DirectiveDataByte:		// ".db"
+						break;
+					case CodeTokenType.DirectiveDataWord:		// ".dw"
+						break;
+					case CodeTokenType.DirectiveDataLong:		// ".dl"
+						break;
+					case CodeTokenType.DirectiveDataDouble:		// ".dd"
+						break;
+					case CodeTokenType.DirectiveMemoryShort:	// ".m8"
+						break;
+					case CodeTokenType.DirectiveMemoryLong:		// ".m16"
+						break;
+					case CodeTokenType.DirectiveIndexShort:		// ".i8"
+						break;
+					case CodeTokenType.DirectiveIndexLong:		// ".i16"
+						break;
+					case CodeTokenType.DirectiveDirectPointer:	// ".dp"
+						break;
+					case CodeTokenType.LabelGlobal:			// "Xxx:"
+						break;
+					case CodeTokenType.LabelLocal:			// ".xxx"
+						break;
+					case CodeTokenType.LabelPlus:			// "+"
+						break;
+					case CodeTokenType.LabelMinus:			// "-"
+						break;
+					case CodeTokenType.Instruction:			// "LDA"
+						break;
+					case CodeTokenType.Define:			// "Xxx=YY"
+						break;
+				}
+			}
+
+			return this.ErrorMessages.length <= 0;
+		}
+
+		private static DecodeValue(str: string) : number | null{
+			let match : RegExpMatchArray | null;
+
+			// hex: `$xxx`
+			match	= str.match(/^\$([\dA-F]+)$/i);
+			if(match){
+				const c	= match[1];
+				return parseInt(c, 16);
+			}
+
+			// bin: `%xxxx_xxxx`
+			match	= str.match(/^%([01_]+)$/i);
+			if(match){
+				const c	= match[1].replace('_', '');
+				return parseInt(c, 2);
+			}
+
+			// dec: `xxx`
+			match	= str.match(/^(\d+)$/i);
+			if(match){
+				const c	= match[1];
+				return parseInt(c, 10);
+			}
+
+			return null;
+		}
+
+		private ResolveValue(name: string | number, depth: number = 1): [number | null, string]{
+			// check number
+			if(typeof(name) === 'number'){
+				return [name, ''];
+			}
+
+			// check depth
+			if(depth > 100){
+				return [null, 'The definition is too deep.'];
+			}
+
+			// define
+			if(this.DefineList[name]){
+				const value	= this.DefineList[name].Value;
+				return this.ResolveValue(value, depth + 1);
+			}
+
+			// plus label
+			// minus label
+			// local label
+			// global label
+			// expression
+
+			// number
+			{
+				const value	= Assembler.DecodeValue(name);
+				if(value){
+					return [value, 'number'];
+				}
+			}
+
+			return [null, 'Value resolution failed.'];
+		}
+
 		private static NormalizeString(str: string): string | null{
 			// remove comment
 			// remove contiguous space
@@ -1159,7 +1324,6 @@ namespace Assembler{
 
 		private static InstructionPatternList: InstructionPattern[] = [
 		//	Pattern								Addressing							Fallback
-		//	Label:	([^,]+)
 			{Pattern: `([Aa]])`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: false	},	// "A"
 			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.Immediate8,			Fallback: true	},	// "#xx"	// #imm8 (REP, SEP, ...)
 			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateMemory,		Fallback: true	},	// "#xx"	// #immM (LDA, STA, ...)
@@ -1187,6 +1351,19 @@ namespace Assembler{
 			{Pattern: `(())`,						Addressing: Emulator.Addressing.Implied,			Fallback: false	},	// ""
 		];
 
+		private static OperatorFunctions = {
+			'+':  (a: number, b: number) => a + b,
+			'-':  (a: number, b: number) => a - b,
+			'*':  (a: number, b: number) => a * b,
+			'/':  (a: number, b: number) => a / b,
+			'%':  (a: number, b: number) => a % b,
+			'<<': (a: number, b: number) => a << b,
+			'>>': (a: number, b: number) => a >> b,
+			'&':  (a: number, b: number) => a & b,
+			'|':  (a: number, b: number) => a | b,
+			'^':  (a: number, b: number) => a ^ b,
+		};
+
 		private static StringToInstruction(str: string): Emulator.Instruction | null{
 			let i	= 0;
 			while(Emulator.Instruction[i] !== undefined){
@@ -1198,24 +1375,36 @@ namespace Assembler{
 			return null;
 		}
 
-		// TODO: for DEBUG
-		private DumpTokens(){
+		private GetErrorStrings(newline: string = '\n'): string[]{
+			const errorStrings: string[]	= [];
+
+			for(let i = 0; i < this.ErrorMessages.length; i++){
+				const m	= this.ErrorMessages[i];
+				errorStrings.push(`[${i}] Line:${m.Line} ${m.Message}` + newline + m.Source);
+			}
+
+			return errorStrings;
+		}
+
+		private DumpTokens(print: (message: string) => void = console.log, newline: string = '\n'){
+			// for debug
 			for(let i = 0; i < this.Tokens.length; i++){
 				const t	= this.Tokens[i];
 				let l	= `[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
 
 				if(t.Options[0] instanceof InstructionToken){
-					l	+= '\n' + t.Options[0].ToString();
+					l	+= newline + t.Options[0].ToString();
 				}
 
-				console.log(l);
+				print(l);
 			}
 		}
-		// TODO: for DEBUG
-		private DumpErrors(){
-			for(let i = 0; i < this.ErrorMessages.length; i++){
-				const m	= this.ErrorMessages[i];
-				console.log(`[${i}] Line:${m.Line} ${m.Message}` + '\n' + m.Source);
+		private DumpErrors(print: (message: string) => void = console.log){
+			// for debug
+			const errorStrings	= this.GetErrorStrings();
+
+			for(let i = 0; i < errorStrings.length; i++){
+				print(errorStrings[i]);
 			}
 		}
 
@@ -1396,7 +1585,11 @@ LabelC		= LabelA + 1
 		LDA	LabelC		; AD 24 01
 		STA	!LabelB, X	; 9D BB AA
 
+LabelOrigin	= $012345
+		.org LabelOrigin
+
 	`;
+	Assembler.Assembler.Verbose	= true;
 	const assemble	= Assembler.Assembler.Assemble(code);
 }
 
