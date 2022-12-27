@@ -484,6 +484,35 @@ namespace Emulator{
 		TSB, TSC, TSX, TXA, TXS, TXY, TYA, TYX, WAI, WDM,
 		XBA, XCE,
 	}
+	const InstructionLength: number[]	= [
+		1 + 0,	// Instruction.Implied
+		1 + 0,	// Instruction.Accumulator
+		1 + 0,	// Instruction.Stack
+		1 + 1,	// Instruction.Immediate8
+		1 + 1,	// Instruction.ImmediateMemory
+		1 + 1,	// Instruction.ImmediateIndex
+		1 + 1,	// Instruction.Directpage
+		1 + 1,	// Instruction.DirectpageIndexedX
+		1 + 1,	// Instruction.DirectpageIndexedY
+		1 + 1,	// Instruction.DirectpageIndirect
+		1 + 1,	// Instruction.DirectpageIndexedIndirectX
+		1 + 1,	// Instruction.DirectpageIndirectIndexedY
+		1 + 1,	// Instruction.DirectpageIndirectLong
+		1 + 1,	// Instruction.DirectpageIndirectLongIndexedY
+		1 + 2,	// Instruction.Absolute
+		1 + 2,	// Instruction.AbsoluteIndexedX
+		1 + 2,	// Instruction.AbsoluteIndexedY
+		1 + 2,	// Instruction.AbsoluteIndirect
+		1 + 2,	// Instruction.AbsoluteIndexedIndirect
+		1 + 2,	// Instruction.AbsoluteIndirectLong
+		1 + 3,	// Instruction.AbsoluteLong
+		1 + 3,	// Instruction.AbsoluteLongIndexedX
+		1 + 1,	// Instruction.Relative
+		1 + 2,	// Instruction.RelativeLong
+		1 + 1,	// Instruction.StackRelative
+		1 + 1,	// Instruction.StackRelativeIndirectIndexedY
+		1 + 2,	// Instruction.BlockMove
+	];
 	export const InstructionTable: {[Instruction: string]: (number | null)[]}	= {
 	//     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,Y       (abs,X)     long        rel         sr,S        xyc    	   Flags
 	//                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y
@@ -594,6 +623,19 @@ namespace Emulator{
 		'XBA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
 		'XCE': [ 0xFB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C (C=E, E=C)
 	};
+
+	export function GetInstructionLength(addressing: Addressing, flagM: boolean, flagX: boolean): number {
+		let additionalLength	= 0;
+		switch(addressing){
+			case Addressing.ImmediateMemory:
+				additionalLength	= (flagM)? 0 : 1;
+				break;
+			case Addressing.ImmediateIndex:
+				additionalLength	= (flagX)? 0 : 1;
+				break;
+		}
+		return InstructionLength[addressing] + additionalLength;
+	}
 
 	export class StepLog{
 		Instruction: Instruction	= Instruction.NOP;	// Initial: NOP ($EA)
@@ -718,8 +760,8 @@ namespace Assembler{
 		Tokens: Token[]		= [];
 
 		LabelList: { [Label: string]: ScopeItem}	= {};
-		PlusLabelList: LocalScopeItem[]			= [];
-		MinusLabelList: LocalScopeItem[]		= [];
+		PlusLabelList: number[]				= [];
+		MinusLabelList: number[]			= [];
 		DefineList: { [Define: string]: DefineItem }	= {};
 		NowScopeName: string				= '';
 		NowAddress: number				= 0;
@@ -1016,7 +1058,7 @@ namespace Assembler{
 
 			let addressingLength: AddressingLength	= AddressingLength.None;
 			switch(instructionLength){
-				case 'b':	addressingLength	= AddressingLength.Short;	break;
+				case 'b':	addressingLength	= AddressingLength.Byte;	break;
 				case 'w':	addressingLength	= AddressingLength.Word;	break;
 				case 'l':	addressingLength	= AddressingLength.Long;	break;
 			}
@@ -1098,64 +1140,265 @@ namespace Assembler{
 			const pushTypeError	= () => {
 				pushError('Type mismatch.');
 			}
+			const resolve		= (name: any): number | null => {
+				if((typeof(name) !== 'string') && (typeof(name) !== 'number')){
+					pushTypeError();
+					return null;
+				}
+				const [value, message]	= this.ResolveValue(name);
+				if(value !== null){
+					return value;
+				}
+				else{
+					pushError(message);
+					return null;
+				}
+			}
 
 			for(let i = 0; i < this.Tokens.length; i++){
 				token		= this.Tokens[i];
 				token.Address	= this.NowAddress;
 				switch(token.TokenType){
 					case CodeTokenType.DirectiveOrigin: {		// ".org"
-						const param		= token.Options[0];
-						if((typeof(param) !== 'string') && (typeof(param) !== 'number')){
-							pushTypeError();
-							break;
-						}
-						const [value, message]	= this.ResolveValue(param);
-						if(value){
+						const value	= resolve(token.Options[0]);
+						if(value !== null){
 							this.NowAddress		= value;
-							token.Address		= value;
+							token.Address		= value;	// overwrite
 							token.Options[0]	= value;
 						}
-						else{
-							pushError(message);
-							break;
-						}
-
 						break;
 					}
 					case CodeTokenType.DirectiveDataByte:		// ".db"
+						// TODO: add string length
+						this.NowAddress	+= (token.Options.length * 1);
 						break;
 					case CodeTokenType.DirectiveDataWord:		// ".dw"
+						this.NowAddress	+= (token.Options.length * 2);
 						break;
 					case CodeTokenType.DirectiveDataLong:		// ".dl"
+						this.NowAddress	+= (token.Options.length * 3);
 						break;
 					case CodeTokenType.DirectiveDataDouble:		// ".dd"
+						this.NowAddress	+= (token.Options.length * 4);
 						break;
 					case CodeTokenType.DirectiveMemoryShort:	// ".m8"
+						this.NowMemoryLength	= true;
 						break;
 					case CodeTokenType.DirectiveMemoryLong:		// ".m16"
+						this.NowMemoryLength	= false;
 						break;
 					case CodeTokenType.DirectiveIndexShort:		// ".i8"
+						this.NowIndexLength	= true;
 						break;
 					case CodeTokenType.DirectiveIndexLong:		// ".i16"
+						this.NowIndexLength	= false;
 						break;
-					case CodeTokenType.DirectiveDirectPointer:	// ".dp"
+					case CodeTokenType.DirectiveDirectPointer: {	// ".dp"
+						const value	= resolve(token.Options[0]);
+						if(value !== null){
+							this.NowDirectPage	= value;
+						}
 						break;
-					case CodeTokenType.LabelGlobal:			// "Xxx:"
+					}
+					case CodeTokenType.LabelGlobal: {		// "Xxx:"
+						const name	= token.Options[0];
+						if(typeof(name) !== 'string'){
+							pushTypeError();
+							break;
+						}
+						this.NowScopeName		= name;
+						this.LabelList[name].Address	= this.NowAddress;
 						break;
+					}
 					case CodeTokenType.LabelLocal:			// ".xxx"
+						const name	= token.Options[0];
+						if(typeof(name) !== 'string'){
+							pushTypeError();
+							break;
+						}
+						this.LabelList[this.NowScopeName].LocalScope[name].Address	= this.NowAddress;
 						break;
 					case CodeTokenType.LabelPlus:			// "+"
+						this.PlusLabelList[this.NowAddress];
 						break;
 					case CodeTokenType.LabelMinus:			// "-"
+						this.PlusLabelList[this.NowAddress];
 						break;
 					case CodeTokenType.Instruction:			// "LDA"
+						const instruction	= token.Options[0];
+						if(!(instruction instanceof InstructionToken)){
+							pushTypeError();
+							break;
+						}
+						const length	= this.DetermineInstructionAddress(instruction, pushError);
+						if(length <= 0){
+							pushError('Invalid addressing.');
+						}
+						this.NowAddress	+= length;
 						break;
 					case CodeTokenType.Define:			// "Xxx=YY"
+						// NOP
 						break;
 				}
 			}
 
+			this.PlusLabelList.sort();
+			this.MinusLabelList.sort();
+
 			return this.ErrorMessages.length <= 0;
+		}
+		private DetermineInstructionAddress(
+			instruction: InstructionToken,
+			pushError: (message: string) => void,
+		): number{
+			let flagM	= this.NowMemoryLength;
+			let flagX	= this.NowIndexLength;
+			let valid	= true;
+
+			// Determine instruction addressing
+			switch(instruction.Addressing){
+				case Emulator.Addressing.Implied:				// imp
+				case Emulator.Addressing.Accumulator:				// A
+				case Emulator.Addressing.Stack:					// S
+				case Emulator.Addressing.Immediate8:				// #imm8
+				case Emulator.Addressing.DirectpageIndirect:			// (dp)
+				case Emulator.Addressing.DirectpageIndexedIndirectX:		// (dp,X)
+				case Emulator.Addressing.DirectpageIndirectIndexedY:		// (dp),Y
+				case Emulator.Addressing.DirectpageIndirectLong:		// [dp]
+				case Emulator.Addressing.DirectpageIndirectLongIndexedY:	// [dp],Y
+				case Emulator.Addressing.AbsoluteIndirect:			// (abs)
+				case Emulator.Addressing.AbsoluteIndexedIndirect:		// (abs,X)
+				case Emulator.Addressing.AbsoluteIndirectLong:			// [abs]
+				case Emulator.Addressing.Relative:				// rel
+				case Emulator.Addressing.RelativeLong:				// rlong
+				case Emulator.Addressing.StackRelative:				// sr,S
+				case Emulator.Addressing.StackRelativeIndirectIndexedY:		// (sr,S),Y
+				case Emulator.Addressing.BlockMove:				// xyc
+					// NOP
+					// `(abs)`, `(abs, X)`, `[abs]` is only used in JMP
+					break;
+
+				case Emulator.Addressing.ImmediateMemory:			// #immM
+					switch(instruction.AddressingLength){
+						case AddressingLength.Byte:
+							flagM	= true;
+							break;
+						case AddressingLength.Word:
+							flagM	= false;
+							break;
+						case AddressingLength.Long:
+							return -1;
+					}
+					break;
+				case Emulator.Addressing.ImmediateIndex:			// #immX
+					switch(instruction.AddressingLength){
+						case AddressingLength.Byte:
+							flagX	= true;
+							break;
+						case AddressingLength.Word:
+							flagX	= false;
+							break;
+						case AddressingLength.Long:
+							return -1;
+					}
+					break;
+
+				case Emulator.Addressing.Directpage:				// dp
+				case Emulator.Addressing.Absolute:				// abs
+				case Emulator.Addressing.AbsoluteLong:				// long
+					valid	= this.DetermineInstructionAddressing(instruction,
+						Emulator.Addressing.Directpage,
+						Emulator.Addressing.Absolute,
+						Emulator.Addressing.AbsoluteLong,
+					);
+					break;
+
+				case Emulator.Addressing.DirectpageIndexedX:			// dp,X
+				case Emulator.Addressing.AbsoluteIndexedX:			// abs,X
+				case Emulator.Addressing.AbsoluteLongIndexedX:			// long,X
+					valid	= this.DetermineInstructionAddressing(instruction,
+						Emulator.Addressing.DirectpageIndexedX,
+						Emulator.Addressing.AbsoluteIndexedX,
+						Emulator.Addressing.AbsoluteLongIndexedX,
+					);
+					break;
+
+				case Emulator.Addressing.DirectpageIndexedY:			// dp,Y
+				case Emulator.Addressing.AbsoluteIndexedY:			// abs,Y
+					valid	= this.DetermineInstructionAddressing(instruction,
+						Emulator.Addressing.DirectpageIndexedY,
+						Emulator.Addressing.AbsoluteIndexedY,
+						null
+					);
+					break;
+			}
+			if(!valid){
+				return -1;
+			}
+
+			return Emulator.GetInstructionLength(instruction.Addressing, flagM, flagX);
+		}
+		private DetermineInstructionAddressing(
+			instruction: InstructionToken,
+			addressingDp: Emulator.Addressing,
+			addressingAbs: Emulator.Addressing,
+			addressingLong: Emulator.Addressing | null,
+		): boolean{
+			const instructionTableEntry	= Emulator.InstructionTable[Emulator.Instruction[instruction.Instruction]];
+			let useAddressing: Emulator.Addressing	= addressingAbs;
+
+			// for JML, JSL
+			if(
+				(addressingLong !== null) &&
+				((instructionTableEntry[addressingDp] === null) && (instructionTableEntry[addressingAbs] === null) && (instructionTableEntry[addressingLong] !== null))
+			){
+				instruction.AddressingLength	= AddressingLength.Long;
+			}
+
+			switch(instruction.AddressingLength){
+				case AddressingLength.None:{
+					// get target address
+					const [target, message]	= this.ResolveValue(instruction.Operand1);
+					if(target === null){
+						break;
+					}
+
+					// long
+					if((addressingLong !== null) && ((this.NowAddress & 0xFF0000) != (target & 0xFF0000))){
+						useAddressing	= addressingLong;
+						break;
+					}
+
+					// dp
+					if(Utility.Math.IsRange(target - this.NowDirectPage, 0, 255)){
+						useAddressing	= addressingDp;
+						break;
+					}
+
+					break;
+				}
+				case AddressingLength.Byte:
+					useAddressing	= addressingDp;
+					break;
+				case AddressingLength.Word:
+					useAddressing	= addressingAbs;
+					break;
+				case AddressingLength.Long:
+					if(addressingLong === null){
+						return false;
+					}
+					useAddressing	= addressingLong;
+					break;
+			}
+
+			// check if instruction exists
+			if(instructionTableEntry[useAddressing] !== null){
+				instruction.Addressing	= useAddressing;
+				return true;
+			}
+			else{
+				return false;
+			}
 		}
 
 		private static DecodeValue(str: string) : number | null{
@@ -1211,7 +1454,7 @@ namespace Assembler{
 			// number
 			{
 				const value	= Assembler.DecodeValue(name);
-				if(value){
+				if(value !== null){
 					return [value, 'number'];
 				}
 			}
@@ -1324,31 +1567,32 @@ namespace Assembler{
 
 		private static InstructionPatternList: InstructionPattern[] = [
 		//	Pattern								Addressing							Fallback
-			{Pattern: `([Aa]])`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: false	},	// "A"
-			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.Immediate8,			Fallback: true	},	// "#xx"	// #imm8 (REP, SEP, ...)
-			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateMemory,		Fallback: true	},	// "#xx"	// #immM (LDA, STA, ...)
-			{Pattern: `(#(.+))`,						Addressing: Emulator.Addressing.ImmediateIndex,			Fallback: false	},	// "#xx"	// #immX (LDX, STX, ...)
-			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.DirectpageIndexedIndirectX,	Fallback: true	},	// "(xx, X)"	// dp
-			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.AbsoluteIndexedIndirect,	Fallback: false	},	// "(xx, X)"	// abs
-			{Pattern: `(\\(\\s*([^,]+)\\s*,\\s*[Ss]\\s*\\)\\s*,\\s*[Yy])`,	Addressing: Emulator.Addressing.StackRelativeIndirectIndexedY,	Fallback: false	},	// "(xx, S), Y"
-			{Pattern: `(\\(\\s*([^,]+)\\s*\\)\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectIndexedY,	Fallback: false	},	// "(xx), Y"
-			{Pattern: `(\\[\\s*([^,]+)\\s*\\]\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectLongIndexedY,	Fallback: false	},	// "[xx], Y"
-			{Pattern: `(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.DirectpageIndirect,		Fallback: true	},	// "(xx)"	// dp
-			{Pattern: `(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.AbsoluteIndirect,		Fallback: false	},	// "(xx)"	// abs
-			{Pattern: `(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.AbsoluteIndirectLong,		Fallback: true	},	// "[xx]"	// dp
-			{Pattern: `(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.DirectpageIndirectLong,		Fallback: false	},	// "[xx]"	// abs
-			{Pattern: `(([^,]+)\\s*,\\s*[Xx])`,				Addressing: Emulator.Addressing.DirectpageIndexedX,		Fallback: false	},	// "xx, X"	// dp, abs, long
-			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.DirectpageIndexedY,		Fallback: true	},	// "xx, Y"	// dp
-			{Pattern: `(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.AbsoluteIndexedY,		Fallback: false	},	// "xx, Y"	// abs
-			{Pattern: `(([^,]+)\\s*,\\s*[Ss])`,				Addressing: Emulator.Addressing.StackRelative,			Fallback: false	},	// "xx, S"
-			{Pattern: `(([^,]+),\\s*([^,]+))`,				Addressing: Emulator.Addressing.BlockMove,			Fallback: false	},	// "src, dst"
-			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Relative,			Fallback: true	},	// "xx"		// rel
-			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.RelativeLong,			Fallback: true	},	// "xx"		// rlong
-			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Directpage,			Fallback: true	},	// "xx"		// dp
-			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.Absolute,			Fallback: true	},	// "xx"		// abs
-			{Pattern: `(([^,]+))`,						Addressing: Emulator.Addressing.AbsoluteLong,			Fallback: false	},	// "xx"		// long
-			{Pattern: `(())`,						Addressing: Emulator.Addressing.Stack,				Fallback: true	},	// ""
-			{Pattern: `(())`,						Addressing: Emulator.Addressing.Implied,			Fallback: false	},	// ""
+			{Pattern: `^(([Aa]))`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: false	},	// "A"
+			{Pattern: `^(#(.+))`,						Addressing: Emulator.Addressing.Immediate8,			Fallback: true	},	// "#xx"	// #imm8 (REP, SEP, ...)
+			{Pattern: `^(#(.+))`,						Addressing: Emulator.Addressing.ImmediateMemory,		Fallback: true	},	// "#xx"	// #immM (LDA, STA, ...)
+			{Pattern: `^(#(.+))`,						Addressing: Emulator.Addressing.ImmediateIndex,			Fallback: false	},	// "#xx"	// #immX (LDX, STX, ...)
+			{Pattern: `^(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.DirectpageIndexedIndirectX,	Fallback: true	},	// "(xx, X)"	// dp
+			{Pattern: `^(\\(\\s*([^,]+)\\s*,\\s*[Xx]\\s*\\))`,		Addressing: Emulator.Addressing.AbsoluteIndexedIndirect,	Fallback: false	},	// "(xx, X)"	// abs
+			{Pattern: `^(\\(\\s*([^,]+)\\s*,\\s*[Ss]\\s*\\)\\s*,\\s*[Yy])`,	Addressing: Emulator.Addressing.StackRelativeIndirectIndexedY,	Fallback: false	},	// "(xx, S), Y"
+			{Pattern: `^(\\(\\s*([^,]+)\\s*\\)\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectIndexedY,	Fallback: false	},	// "(xx), Y"
+			{Pattern: `^(\\[\\s*([^,]+)\\s*\\]\\s*,\\s*[Yy])`,		Addressing: Emulator.Addressing.DirectpageIndirectLongIndexedY,	Fallback: false	},	// "[xx], Y"
+			{Pattern: `^(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.DirectpageIndirect,		Fallback: true	},	// "(xx)"	// dp
+			{Pattern: `^(\\(\\s*([^,]+)\\s*\\))`,				Addressing: Emulator.Addressing.AbsoluteIndirect,		Fallback: false	},	// "(xx)"	// abs
+			{Pattern: `^(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.AbsoluteIndirectLong,		Fallback: true	},	// "[xx]"	// dp
+			{Pattern: `^(\\[\\s*([^,]+)\\s*\\])`,				Addressing: Emulator.Addressing.DirectpageIndirectLong,		Fallback: false	},	// "[xx]"	// abs
+			{Pattern: `^(([^,]+)\\s*,\\s*[Xx])`,				Addressing: Emulator.Addressing.DirectpageIndexedX,		Fallback: false	},	// "xx, X"	// dp, abs, long
+			{Pattern: `^(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.DirectpageIndexedY,		Fallback: true	},	// "xx, Y"	// dp
+			{Pattern: `^(([^,]+)\\s*,\\s*[Yy])`,				Addressing: Emulator.Addressing.AbsoluteIndexedY,		Fallback: false	},	// "xx, Y"	// abs
+			{Pattern: `^(([^,]+)\\s*,\\s*[Ss])`,				Addressing: Emulator.Addressing.StackRelative,			Fallback: false	},	// "xx, S"
+			{Pattern: `^(([^,]+),\\s*([^,]+))`,				Addressing: Emulator.Addressing.BlockMove,			Fallback: false	},	// "src, dst"
+			{Pattern: `^(([^,]+))`,						Addressing: Emulator.Addressing.Relative,			Fallback: true	},	// "xx"		// rel
+			{Pattern: `^(([^,]+))`,						Addressing: Emulator.Addressing.RelativeLong,			Fallback: true	},	// "xx"		// rlong
+			{Pattern: `^(([^,]+))`,						Addressing: Emulator.Addressing.Directpage,			Fallback: true	},	// "xx"		// dp
+			{Pattern: `^(([^,]+))`,						Addressing: Emulator.Addressing.Absolute,			Fallback: true	},	// "xx"		// abs
+			{Pattern: `^(([^,]+))`,						Addressing: Emulator.Addressing.AbsoluteLong,			Fallback: false	},	// "xx"		// long
+			{Pattern: `^(())`,						Addressing: Emulator.Addressing.Accumulator,			Fallback: true	},	// ""
+			{Pattern: `^(())`,						Addressing: Emulator.Addressing.Stack,				Fallback: true	},	// ""
+			{Pattern: `^(())`,						Addressing: Emulator.Addressing.Implied,			Fallback: false	},	// ""
 		];
 
 		private static OperatorFunctions = {
@@ -1462,7 +1706,7 @@ namespace Assembler{
 	}
 	enum AddressingLength{
 		None,
-		Short,
+		Byte,
 		Word,
 		Long,
 	}
@@ -1520,7 +1764,7 @@ EmulationRST:
 		SEI		; 78
 		REP	#$CB	; C2 CB
 		XCE		; FB
-		SEP	#$34	; E2
+		SEP	#$34	; E2 34
 		.m8
 		.i8
 		LDA.b	#$12	; A9 12
@@ -1585,8 +1829,28 @@ LabelC		= LabelA + 1
 		LDA	LabelC		; AD 24 01
 		STA	!LabelB, X	; 9D BB AA
 
-LabelOrigin	= $012345
+LabelOrigin	= $0189AB
 		.org LabelOrigin
+		ASL	A		; 0A
+		ASL			; 0A
+		;ASL	$01		; 06 01
+		LDA	$0100DD		; A5 DD // FIXME
+		LDA.b	$AABBCC		; A5 CC
+		LDA.w	$AABBCC		; AD CC BB
+		LDA.l	$AABBCC		; AF CC BB AA
+
+		.org	$008080
+		.dp	$0100
+		LDA	$0000		; AD 00 00
+		LDA	$00FF		; AD FF 00
+		LDA	$0100		; A5 00
+		LDA	$0101		; A5 01
+		.dp	$0101
+		LDA	$0000		; AD 00 00
+		LDA	$00FF		; AD FF 00
+		LDA	$0100		; AD 01 00
+		LDA	$0101		; A5 00
+		.dp	$0000
 
 	`;
 	Assembler.Assembler.Verbose	= true;
