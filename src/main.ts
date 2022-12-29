@@ -918,8 +918,8 @@ namespace Assembler{
 
 			[directive, remain]	= Assembler.SplitOnce(line);
 
-			function pushDataArray(tokenType: CodeTokenType){
-				const splits	= Assembler.SplitAll(remain, [',', ' '], false);
+			const pushDataArray	= (tokenType: CodeTokenType) => {
+				const splits	= Assembler.SplitAll(remain, [','], false);
 				pushToken(tokenType, splits);
 				remain	= '';
 			}
@@ -1218,10 +1218,10 @@ namespace Assembler{
 						this.LabelList[this.NowScopeName].LocalScope[name].Address	= this.NowAddress;
 						break;
 					case CodeTokenType.LabelPlus:			// "+"
-						this.PlusLabelList[this.NowAddress];
+						this.PlusLabelList.push(this.NowAddress);
 						break;
 					case CodeTokenType.LabelMinus:			// "-"
-						this.PlusLabelList[this.NowAddress];
+						this.MinusLabelList.push(this.NowAddress);
 						break;
 					case CodeTokenType.Instruction:			// "LDA"
 						const instruction	= token.Options[0];
@@ -1363,13 +1363,15 @@ namespace Assembler{
 					}
 
 					// long
-					if((addressingLong !== null) && ((this.NowAddress & 0xFF0000) != (target & 0xFF0000))){
+					const availableLong	= (addressingLong !== null) && (instructionTableEntry[addressingLong] !== null);
+					if(availableLong && ((this.NowAddress & 0xFF0000) != (target & 0xFF0000))){
 						useAddressing	= addressingLong;
 						break;
 					}
 
 					// dp
-					if(Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 255)){
+					const availableDp	= (instructionTableEntry[addressingDp] !== null);
+					if(availableDp && (Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 255))){
 						useAddressing	= addressingDp;
 						break;
 					}
@@ -1403,11 +1405,17 @@ namespace Assembler{
 		private static DecodeValue(str: string) : number | null{
 			let match : RegExpMatchArray | null;
 
+			let sign	= 1;
+			if(str[0] === '-'){
+				sign	= -1;
+				str	= str.substring(1);
+			}
+
 			// hex: `$xxx`
 			match	= str.match(/^\$([\dA-F]+)$/i);
 			if(match){
 				const c	= match[1];
-				return parseInt(c, 16);
+				return parseInt(c, 16) * sign;
 			}
 
 			// bin: `%xxxx_xxxx`
@@ -1440,15 +1448,76 @@ namespace Assembler{
 
 			// define
 			if(this.DefineList[name]){
-				const value	= this.DefineList[name].Value;
-				return this.ResolveValue(value, depth + 1);
+				const valueString	= this.DefineList[name].Value;
+				const [value, message]	= this.ResolveValue(valueString, depth + 1);
+				if(value !== null){
+					return [value, 'define']
+				}
+				else{
+					return [null, message];
+				}
 			}
 
 			// plus label
+			if(name === '+'){
+				for(let i = 0; i < this.PlusLabelList.length; i++){
+					if(this.NowAddress < this.PlusLabelList[i]){
+						return [this.PlusLabelList[i], 'plus label'];
+					}
+				}
+				return [null, 'plus label resolution failed.'];
+			}
+
 			// minus label
-			// local label
-			// global label
+			if(name === '-'){
+				for(let i = this.MinusLabelList.length - 1; i >= 0; i--){
+					if(this.MinusLabelList[i] < this.NowAddress){
+						return [this.MinusLabelList[i], 'minus label'];
+					}
+				}
+				return [null, 'minus label resolution failed.'];
+			}
+
 			// expression
+			const matchExpression	= name.match(/^([^\s*/%<>\|\^][^\s\+\-*/%<>\|\^]*)\s*([\+\-*/%<>\|\^]+)\s*(.*)$/);
+			if(matchExpression){
+				const leftString	= matchExpression[1];
+				const operator		= matchExpression[2];
+				const rightString	= matchExpression[3];
+				const operatorFunction	= Assembler.OperatorFunctions[operator];
+				if(!operatorFunction){
+					return [null, 'Invalid operator.'];
+				}
+
+				const [leftValue, leftMessage]		= this.ResolveValue(leftString);
+				const [rightValue, rightMessage]	= this.ResolveValue(rightString);
+				if(leftValue === null){
+					return [null, leftMessage];
+				}
+				if(rightValue === null){
+					return [null, rightMessage];
+				}
+				return [operatorFunction(leftValue, rightValue), 'expression'];
+			}
+
+			// local label
+			if(name[0] === '.'){
+				const scope	= this.LabelList[this.NowScopeName];
+				if(!scope){
+					return [null, 'Scope resolution failed.'];
+				}
+				const label	= scope.LocalScope[name];
+				if(!label){
+					return [null, 'Local label resolution failed.'];
+				}
+				return [label.Address, 'local label'];
+			}
+
+			// global label
+			if(this.LabelList[name]){
+				const label	= this.LabelList[name];
+				return [label.Address, 'global label'];
+			}
 
 			// number
 			{
@@ -1458,7 +1527,7 @@ namespace Assembler{
 				}
 			}
 
-			return [null, 'Value resolution failed.'];
+			return [null, `Failed to resolve "${name}".`];
 		}
 
 		private GetDataBytes(token: Token, baseSize: number): number[]{
@@ -1631,7 +1700,7 @@ namespace Assembler{
 			{Pattern: `^(())`,						Addressing: Emulator.Addressing.Implied,			Fallback: false	},	// ""
 		];
 
-		private static OperatorFunctions = {
+		private static OperatorFunctions: {[operator: string]: (a: number, b: number) => number} = {
 			'+':  (a: number, b: number) => a + b,
 			'-':  (a: number, b: number) => a - b,
 			'*':  (a: number, b: number) => a * b,
@@ -1889,6 +1958,23 @@ LabelOrigin	= $0189AB
 		LDA	$0100		; AD 01 00
 		LDA	$0101		; A5 00
 		.dp	$0000
+
+		.org	$009800
+ResolveTest:
+!offset		= 3
+		NOP				; EA
+-		.db	+			; 03
+		.db	-			; 01
++		NOP				; EA
+.L
+		.db	1 + 1			; 02
+		.db	1 << 4			; 10
+		.db	.L			; 04
+		.db	ResolveTest >> 8	; 98
+		.db	+ + !offset		; 0C
++		.db	- + !offset		; 04
+
+
 
 	`;
 	Assembler.Assembler.Verbose	= true;
