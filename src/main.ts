@@ -1169,17 +1169,16 @@ namespace Assembler{
 						break;
 					}
 					case CodeTokenType.DirectiveDataByte:		// ".db"
-						// TODO: add string length
-						this.NowAddress	+= (token.Options.length * 1);
+						this.NowAddress	+= this.GetDataBytes(token, 1).length;
 						break;
 					case CodeTokenType.DirectiveDataWord:		// ".dw"
-						this.NowAddress	+= (token.Options.length * 2);
+						this.NowAddress	+= this.GetDataBytes(token, 2).length;
 						break;
 					case CodeTokenType.DirectiveDataLong:		// ".dl"
-						this.NowAddress	+= (token.Options.length * 3);
+						this.NowAddress	+= this.GetDataBytes(token, 3).length;
 						break;
 					case CodeTokenType.DirectiveDataDouble:		// ".dd"
-						this.NowAddress	+= (token.Options.length * 4);
+						this.NowAddress	+= this.GetDataBytes(token, 4).length;
 						break;
 					case CodeTokenType.DirectiveMemoryShort:	// ".m8"
 						this.NowMemoryLength	= true;
@@ -1370,7 +1369,7 @@ namespace Assembler{
 					}
 
 					// dp
-					if(Utility.Math.IsRange(target - this.NowDirectPage, 0, 255)){
+					if(Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 255)){
 						useAddressing	= addressingDp;
 						break;
 					}
@@ -1460,6 +1459,43 @@ namespace Assembler{
 			}
 
 			return [null, 'Value resolution failed.'];
+		}
+
+		private GetDataBytes(token: Token, baseSize: number): number[]{
+			const data: number[]	= [];
+
+			const pushValue	= (value: number) => {
+				for(let i = 0; i < baseSize; i++){
+					const byte	= value & 0xFF;
+					data.push(byte);
+
+					value	>>= 8;
+				}
+			}
+
+			for(let i = 0; i < token.Options.length; i++){
+				const option	= token.Options[i];
+				if(typeof(option) === 'number'){
+					pushValue(option);
+				}
+				else if(typeof(option) === 'string'){
+					if(option[0] === '"'){
+						// string
+						for(let j = 1; j < (option.length - 1); j++){
+							const char	= option.codePointAt(j);
+							pushValue((char !== undefined)? char : 0);
+						}
+					}
+					else{
+						const [resolved, message]	= this.ResolveValue(option);
+						pushValue((resolved !== null)? resolved : 0);
+					}
+				}
+				else{
+				}
+			}
+
+			return data;
 		}
 
 		private static NormalizeString(str: string): string | null{
@@ -1759,7 +1795,7 @@ function CreateDebugObject(){
 
 function DebugAsseble(){
 	const code	= `
-		.org $008000	; code start
+		.org	$008000	; code start
 EmulationRST:
 		SEI		; 78
 		REP	#$CB	; C2 CB
@@ -1788,7 +1824,8 @@ EmulationRST:
 		.dw	1, 2, $3, "ABC", Test	; 01 00 02 00 03 00 41 00 42 00 43 00 40 80
 		.dl	1, 2, $3, "ABC", Test	; 01 00 00 02 00 00 03 00 00 41 00 00 42 00 00 43 00 00 40 80 00
 		.dd	1, 2, $3, "ABC", Test	; 01 00 00 00 02 00 00 00 03 00 00 00 41 00 00 00 42 00 00 00 43 00 00 00 40 80 00 00
-		.org $008040
+
+		.org	$008040
 Test:	.Start
 ;.Inf
 .Inf		JML	.Inf	; 5C 40 80 00
@@ -1830,11 +1867,12 @@ LabelC		= LabelA + 1
 		STA	!LabelB, X	; 9D BB AA
 
 LabelOrigin	= $0189AB
-		.org LabelOrigin
+		.org	LabelOrigin
+		.dp	$0000
 		ASL	A		; 0A
 		ASL			; 0A
 		;ASL	$01		; 06 01
-		LDA	$0100DD		; A5 DD // FIXME
+		LDA	$0100DD		; A5 DD
 		LDA.b	$AABBCC		; A5 CC
 		LDA.w	$AABBCC		; AD CC BB
 		LDA.l	$AABBCC		; AF CC BB AA
