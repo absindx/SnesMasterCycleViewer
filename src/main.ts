@@ -754,33 +754,37 @@ namespace Emulator{
 
 namespace Assembler{
 	export class Assembler{
-		// TODO: privatization, public for debugging
-		Chunks: DataChunk[]	= [];
+		private Chunks: DataChunk[]				= [];
 
-		Tokens: Token[]		= [];
+		private Tokens: Token[]					= [];
 
-		LabelList: { [Label: string]: ScopeItem}	= {};
-		PlusLabelList: number[]				= [];
-		MinusLabelList: number[]			= [];
-		DefineList: { [Define: string]: DefineItem }	= {};
-		NowScopeName: string				= '';
-		NowAddress: number				= 0;
-		NowDirectPage: number				= 0;
-		/** true=8bit / false=16bit */
-		NowMemoryLength: boolean			= true;
-		/** true=8bit / false=16bit */
-		NowIndexLength: boolean				= true;
+		private LabelList: { [Label: string]: ScopeItem}	= {};
+		private PlusLabelList: number[]				= [];
+		private MinusLabelList: number[]			= [];
+		private DefineList: { [Define: string]: DefineItem }	= {};
 
-		ErrorMessages: ErrorMessage[]	= [];
+		private NowScopeName: string				= '';
+		private NowAddress: number				= 0;
+		private NowDirectPage: number				= 0;
+		/** true = 8 bit / false = 16 bit */
+		private NowMemoryLength: boolean			= true;
+		/** true = 8 bit / false = 16 bit */
+		private NowIndexLength: boolean				= true;
 
-		public static Verbose: boolean			= false;
+		private ErrorMessages: ErrorMessage[]			= [];
+
+		/** true = Output log to console / false = Do not output log */
+		public static Verbose: boolean				= false;
 
 		public static Assemble(code: string): DataChunk[] | ErrorMessage[]{
 			const lex	= new Assembler();
 
+			const sectionLog	= (str: string) => {
+				console.log('%c' + (`----- ${str} ` + '-'.repeat(50)).substring(0, 50), 'background-color: silver');
+			}
 			const passStart		= (pass: number) => {
 				if(Assembler.Verbose){
-					console.log(`%c----- Pass ${pass} -------------------------------------`, 'background-color: silver');
+					sectionLog(`Pass ${pass}`);
 				}
 				lex.ResetLexicalStatus();
 			}
@@ -789,7 +793,14 @@ namespace Assembler{
 					lex.DumpTokens();
 				}
 			}
+			const dumpChunk		= () => {
+				if(Assembler.Verbose){
+					sectionLog(`Assembled`);
+					lex.DumpChunks();
+				}
+			}
 			const dumpError		= () => {
+				sectionLog(`Error`);
 				const consoleErrorLog	= (message: string) => {
 					console.log('%c' + message, 'color: red');
 				}
@@ -815,12 +826,13 @@ namespace Assembler{
 			passFinish();
 
 			// Pass3: generate binary
-			// passStart(3);
-			// if(!lex.GenerateBinary()){
-			// 	dumpError();
-			// 	return lex.ErrorMessages;
-			// }
-			// passFinish();
+			passStart(3);
+			if(!lex.GenerateBinary()){
+				dumpError();
+				return lex.ErrorMessages;
+			}
+			passFinish();
+			dumpChunk();
 
 			return lex.Chunks;
 		}
@@ -1129,6 +1141,7 @@ namespace Assembler{
 
 		private ConfirmAddress(): boolean{
 			let token: Token;
+
 			const pushError		= (message: string) => {
 				this.ErrorMessages.push({
 					File: token.File,
@@ -1161,11 +1174,13 @@ namespace Assembler{
 				switch(token.TokenType){
 					case CodeTokenType.DirectiveOrigin: {		// ".org"
 						const value	= resolve(token.Options[0]);
-						if(value !== null){
-							this.NowAddress		= value;
-							token.Address		= value;	// overwrite
-							token.Options[0]	= value;
+						if(value === null){
+							break;
 						}
+
+						this.NowAddress		= value;
+						token.Address		= value;	// overwrite
+						token.Options[0]	= value;
 						break;
 					}
 					case CodeTokenType.DirectiveDataByte:		// ".db"
@@ -1194,9 +1209,12 @@ namespace Assembler{
 						break;
 					case CodeTokenType.DirectiveDirectPointer: {	// ".dp"
 						const value	= resolve(token.Options[0]);
-						if(value !== null){
-							this.NowDirectPage	= value;
+						if(value === null){
+							break;
 						}
+
+						this.NowDirectPage	= value;
+						token.Options[0]	= value;
 						break;
 					}
 					case CodeTokenType.LabelGlobal: {		// "Xxx:"
@@ -1241,6 +1259,7 @@ namespace Assembler{
 				}
 			}
 
+			// NOTE: refer to the label of the nearest address instead of the line number.
 			this.PlusLabelList.sort();
 			this.MinusLabelList.sort();
 
@@ -1371,7 +1390,7 @@ namespace Assembler{
 
 					// dp
 					const availableDp	= (instructionTableEntry[addressingDp] !== null);
-					if(availableDp && (Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 255))){
+					if(availableDp && (Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 0x100))){
 						useAddressing	= addressingDp;
 						break;
 					}
@@ -1399,6 +1418,326 @@ namespace Assembler{
 			}
 			else{
 				return false;
+			}
+		}
+
+		private GenerateBinary(): boolean{
+			let token: Token;
+			let chunk	= new DataChunk();
+
+			const pushError		= (message: string) => {
+				this.ErrorMessages.push({
+					File: token.File,
+					Line: token.Line,
+					Source: token.Source,
+					Message: message,
+				});
+			}
+			const pushTypeError	= () => {
+				pushError('Type mismatch.');
+			}
+			const resolve		= (name: any): number | null => {
+				if((typeof(name) !== 'string') && (typeof(name) !== 'number')){
+					pushTypeError();
+					return null;
+				}
+				const [value, message]	= this.ResolveValue(name);
+				if(value !== null){
+					return value;
+				}
+				else{
+					pushError(message);
+					return null;
+				}
+			}
+
+			for(let i = 0; i < this.Tokens.length; i++){
+				token		= this.Tokens[i];
+				this.NowAddress	= token.Address;
+
+				switch(token.TokenType){
+					case CodeTokenType.DirectiveOrigin: {		// ".org"
+						// push chunk
+						if(chunk.Data.length > 0){
+							this.Chunks.push(chunk);
+						}
+						chunk			= new DataChunk();
+						chunk.Address		= token.Address;
+
+						break;
+					}
+					case CodeTokenType.DirectiveDataByte: {		// ".db"
+						const data	= this.GetDataBytes(token, 1);
+						chunk.Data	= chunk.Data.concat(data);
+						break;
+					}
+					case CodeTokenType.DirectiveDataWord: {		// ".dw"
+						const data	= this.GetDataBytes(token, 2);
+						chunk.Data	= chunk.Data.concat(data);
+						break;
+					}
+					case CodeTokenType.DirectiveDataLong: {		// ".dl"
+						const data	= this.GetDataBytes(token, 3);
+						chunk.Data	= chunk.Data.concat(data);
+						break;
+					}
+					case CodeTokenType.DirectiveDataDouble: {	// ".dd"
+						const data	= this.GetDataBytes(token, 4);
+						chunk.Data	= chunk.Data.concat(data);
+						break;
+					}
+					case CodeTokenType.DirectiveMemoryShort:	// ".m8"
+						this.NowMemoryLength	= true;
+						break;
+					case CodeTokenType.DirectiveMemoryLong:		// ".m16"
+						this.NowMemoryLength	= false;
+						break;
+					case CodeTokenType.DirectiveIndexShort:		// ".i8"
+						this.NowIndexLength	= true;
+						break;
+					case CodeTokenType.DirectiveIndexLong:		// ".i16"
+						this.NowIndexLength	= false;
+						break;
+					case CodeTokenType.DirectiveDirectPointer: {	// ".dp"
+						const value	= resolve(token.Options[0]);
+						if(value === null){
+							break;
+						}
+
+						this.NowDirectPage	= value;
+						break;
+					}
+					case CodeTokenType.LabelGlobal: {		// "Xxx:"
+						const name	= token.Options[0];
+						if(typeof(name) !== 'string'){
+							pushTypeError();
+							break;
+						}
+						this.NowScopeName		= name;
+						break;
+					}
+					case CodeTokenType.LabelLocal:			// ".xxx"
+					case CodeTokenType.LabelPlus:			// "+"
+					case CodeTokenType.LabelMinus:			// "-"
+						// NOP
+						break;
+					case CodeTokenType.Instruction:			// "LDA"
+						const instruction	= token.Options[0];
+						if(!(instruction instanceof InstructionToken)){
+							pushTypeError();
+							break;
+						}
+						this.PushInstructionBinary(chunk, instruction, pushError);
+						break;
+					case CodeTokenType.Define:			// "Xxx=YY"
+						// NOP
+						break;
+				}
+			}
+
+			// push chunk
+			if(chunk.Data.length > 0){
+				this.Chunks.push(chunk);
+			}
+
+			return this.ErrorMessages.length <= 0;
+		}
+		private PushInstructionBinary(
+			chunk: DataChunk,
+			instruction: InstructionToken,
+			pushError: (message: string) => void,
+		){
+			const instructionEntry	= Emulator.InstructionTable[Emulator.Instruction[instruction.Instruction]];
+			if(instructionEntry === null){
+				pushError('Invalid instruction.');
+				return;
+			}
+			const instructionByte	= instructionEntry[instruction.Addressing];
+			if(instructionByte === null){
+				pushError('Invalid instruction addressing.');
+				return;
+			}
+
+			const pushByte	= (value: number) => {
+				value	= Utility.Type.ToByte(value);
+				chunk.Data.push( value        & 0xFF);
+			}
+			const pushWord	= (value: number) => {
+				value	= Utility.Type.ToWord(value);
+				chunk.Data.push( value        & 0xFF);
+				chunk.Data.push((value >>  8) & 0xFF);
+			}
+			const pushLong	= (value: number) => {
+				value	= Utility.Type.ToLong(value);
+				chunk.Data.push( value        & 0xFF);
+				chunk.Data.push((value >>  8) & 0xFF);
+				chunk.Data.push((value >> 16) & 0xFF);
+			}
+
+			pushByte(instructionByte);
+
+			switch(instruction.Addressing){
+				case Emulator.Addressing.Implied:				// imp
+				case Emulator.Addressing.Accumulator:				// A
+				case Emulator.Addressing.Stack:					// S
+				{
+					// NOP
+					break;
+				}
+
+				case Emulator.Addressing.Immediate8:				// #imm8
+				case Emulator.Addressing.StackRelative:				// sr,S
+				case Emulator.Addressing.StackRelativeIndirectIndexedY:		// (sr,S),Y
+				{
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					pushByte(operand1);
+					break;
+				}
+
+				case Emulator.Addressing.Directpage:				// dp
+				case Emulator.Addressing.DirectpageIndexedX:			// dp,X
+				case Emulator.Addressing.DirectpageIndexedY:			// dp,Y
+				case Emulator.Addressing.DirectpageIndirect:			// (dp)
+				case Emulator.Addressing.DirectpageIndexedIndirectX:		// (dp,X)
+				case Emulator.Addressing.DirectpageIndirectIndexedY:		// (dp),Y
+				case Emulator.Addressing.DirectpageIndirectLong:		// [dp]
+				case Emulator.Addressing.DirectpageIndirectLongIndexedY:	// [dp],Y
+				{
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					const effective	= (operand1 & 0x00FFFF) - this.NowDirectPage;
+					if((instruction.AddressingLength === AddressingLength.Byte) || (Utility.Math.IsRange(effective, 0, 0x100))){
+						pushByte(effective);
+					}
+					else{
+						pushError('Direct page out of bounds.');
+						break;
+					}
+					break;
+				}
+
+				case Emulator.Addressing.ImmediateMemory: {			// #immM
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+
+					const isByte	= (instruction.AddressingLength === AddressingLength.Byte)
+							|| ((instruction.AddressingLength === AddressingLength.None) && this.NowMemoryLength);
+					if(isByte){
+						pushByte(operand1);
+					}
+					else{
+						pushWord(operand1);
+					}
+					break;
+				}
+				case Emulator.Addressing.ImmediateIndex: {			// #immX
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+
+					const isByte	= (instruction.AddressingLength === AddressingLength.Byte)
+							|| ((instruction.AddressingLength === AddressingLength.None) && this.NowIndexLength);
+					if(isByte){
+						pushByte(operand1);
+					}
+					else{
+						pushWord(operand1);
+					}
+					break;
+				}
+
+				case Emulator.Addressing.Absolute:				// abs
+				case Emulator.Addressing.AbsoluteIndexedX:			// abs,X
+				case Emulator.Addressing.AbsoluteIndexedY:			// abs,Y
+				case Emulator.Addressing.AbsoluteIndirect:			// (abs)
+				case Emulator.Addressing.AbsoluteIndexedIndirect:		// (abs,X)
+				case Emulator.Addressing.AbsoluteIndirectLong:			// [abs]
+				{
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					pushWord(operand1);
+					break;
+				}
+
+				case Emulator.Addressing.AbsoluteLong:				// long
+				case Emulator.Addressing.AbsoluteLongIndexedX:			// long,X
+				{
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					pushLong(operand1);
+					break;
+				}
+
+				case Emulator.Addressing.Relative: {				// rel
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					const nextAddress	= this.NowAddress + 2;
+					const effective		= operand1 - nextAddress;
+					if(Utility.Math.IsRange(effective, -0x80, 0x7F)){
+						pushByte(effective);
+					}
+					else{
+						pushError('Relative address range exceeded.');
+						break;
+					}
+					break;
+				}
+				case Emulator.Addressing.RelativeLong: {			// rlong
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					if(operand1 === null){
+						pushError('Failed to resolve operand. ' + message1);
+						break;
+					}
+					const nextAddress	= this.NowAddress + 3;
+					const effective		= operand1 - nextAddress;
+					if(Utility.Math.IsRange(effective, -0x8000, 0x7FFF)){
+						pushWord(effective);
+					}
+					else{
+						pushError('Relative address range exceeded.');
+						break;
+					}
+					break;
+				}
+				case Emulator.Addressing.BlockMove: {				// xyc
+					const [operand1, message1]	= this.ResolveValue(instruction.Operand1);
+					const [operand2, message2]	= this.ResolveValue(instruction.Operand2);
+					const operand1Failed		= operand1 === null;
+					const operand2Failed		= operand2 === null;
+					if(operand1Failed || operand2Failed){
+						if(operand1Failed){
+							pushError('Failed to resolve operand. ' + message1);
+						}
+						if(operand2Failed){
+							pushError('Failed to resolve operand. ' + message2);
+						}
+						break;
+					}
+					pushByte(operand2);
+					pushByte(operand1);
+					break;
+				}
 			}
 		}
 
@@ -1465,7 +1804,7 @@ namespace Assembler{
 						return [this.PlusLabelList[i], 'plus label'];
 					}
 				}
-				return [null, 'plus label resolution failed.'];
+				return [null, 'Plus label resolution failed.'];
 			}
 
 			// minus label
@@ -1475,7 +1814,7 @@ namespace Assembler{
 						return [this.MinusLabelList[i], 'minus label'];
 					}
 				}
-				return [null, 'minus label resolution failed.'];
+				return [null, 'Minus label resolution failed.'];
 			}
 
 			// expression
@@ -1635,7 +1974,7 @@ namespace Assembler{
 					left	+= c;
 				}
 			}
-			right	= reader.Remaining();
+			right	= reader.Remaining().trim();
 
 			return [left, right];
 		}
@@ -1654,7 +1993,7 @@ namespace Assembler{
 					const isPush	= (!skipBlank) || (item.length > 0);
 					const space	= (item.length <= 0) && (c === ' ');
 					if(isPush && !space){
-						list.push(item);
+						list.push(item.trim());
 					}
 					item	= '';
 				}
@@ -1664,7 +2003,7 @@ namespace Assembler{
 			}
 
 			if((!skipBlank) || (item.length > 0)){
-				list.push(item);
+				list.push(item.trim());
 			}
 
 			return list;
@@ -1748,6 +2087,20 @@ namespace Assembler{
 				print(l);
 			}
 		}
+		private DumpChunks(print: (message: string) => void = console.log, newline: string = '\n', columns = 16){
+			// for debug
+			for(let i = 0; i < this.Chunks.length; i++){
+				const chunk	= this.Chunks[i];
+				let str		= `[${i}] $${Utility.Format.ToHexString(chunk.Address, 6)} ${chunk.Data.length} byte(s)`;
+				for(let j = 0; j < chunk.Data.length; j++){
+					if((j % columns) == 0){
+						str	+= newline + `  $${Utility.Format.ToHexString(chunk.Address + j, 6)} :`;
+					}
+					str	+= ` ${Utility.Format.ToHexString(chunk.Data[j], 2)}`;
+				}
+				print(str);
+			}
+		}
 		private DumpErrors(print: (message: string) => void = console.log){
 			// for debug
 			const errorStrings	= this.GetErrorStrings();
@@ -1828,10 +2181,10 @@ namespace Assembler{
 		Value: number | string	= 0;
 	}
 
-	export type DataChunk = {
-		Address: number,
-		Data: Uint8Array,
-	};
+	export class DataChunk{
+		Address: number	= 0;
+		Data: number[]	= [];
+	}
 
 	class InstructionPattern{
 		Pattern: string			= '';
@@ -1905,22 +2258,22 @@ Test:	.Start
 		.i8
 		LDX.b	#$1234	; A2 34
 		LDX.w	#$5678	; A2 78 56
-		LDX	#$ABCD	; A2 34
+		LDX	#$ABCD	; A2 CD
 		.i16
 		LDX.b	#$1234	; A2 34
 		LDX.w	#$5678	; A2 78 56
-		LDX	#$ABCD	; A2 78 56
+		LDX	#$ABCD	; A2 CD AB
 		.i8
 		LDX	#$1234	; A2 34
 
 		.i8
 		LDY.b	#$1234	; A0 34
 		LDY.w	#$5678	; A0 78 56
-		LDY	#$ABCD	; A0 34
+		LDY	#$ABCD	; A0 CD
 		.i16
 		LDY.b	#$1234	; A0 34
 		LDY.w	#$5678	; A0 78 56
-		LDY	#$ABCD	; A0 78 56
+		LDY	#$ABCD	; A0 CD AB
 		.i8
 		LDY	#$1234	; A0 34
 
@@ -1940,7 +2293,7 @@ LabelOrigin	= $0189AB
 		.dp	$0000
 		ASL	A		; 0A
 		ASL			; 0A
-		;ASL	$01		; 06 01
+		ASL	$01		; 06 01
 		LDA	$0100DD		; A5 DD
 		LDA.b	$AABBCC		; A5 CC
 		LDA.w	$AABBCC		; AD CC BB
@@ -1955,9 +2308,12 @@ LabelOrigin	= $0189AB
 		.dp	$0101
 		LDA	$0000		; AD 00 00
 		LDA	$00FF		; AD FF 00
-		LDA	$0100		; AD 01 00
+		LDA	$0100		; AD 00 01
 		LDA	$0101		; A5 00
+		LDA	$0123		; A5 22
+		LDA	#$0123		; A9 23 01
 		.dp	$0000
+		LDA	$0101		; AD 01 01
 
 		.org	$009800
 ResolveTest:
@@ -1973,8 +2329,6 @@ ResolveTest:
 		.db	ResolveTest >> 8	; 98
 		.db	+ + !offset		; 0C
 +		.db	- + !offset		; 04
-
-
 
 	`;
 	Assembler.Assembler.Verbose	= true;
