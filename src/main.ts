@@ -776,7 +776,7 @@ namespace Assembler{
 		/** true = Output log to console / false = Do not output log */
 		public static Verbose: boolean				= false;
 
-		public static Assemble(code: string): DataChunk[] | ErrorMessage[]{
+		public static Assemble(code: string): [DataChunk[] | null, ErrorMessage[]]{
 			const lex	= new Assembler();
 
 			const sectionLog	= (str: string) => {
@@ -813,7 +813,7 @@ namespace Assembler{
 			passStart(1);
 			if(!lex.SplitTokens(code)){
 				dumpError();
-				return lex.ErrorMessages;
+				return [null, lex.ErrorMessages];
 			}
 			passFinish();
 
@@ -821,7 +821,7 @@ namespace Assembler{
 			passStart(2);
 			if(!lex.ConfirmAddress()){
 				dumpError();
-				return lex.ErrorMessages;
+				return [null, lex.ErrorMessages];
 			}
 			passFinish();
 
@@ -829,12 +829,12 @@ namespace Assembler{
 			passStart(3);
 			if(!lex.GenerateBinary()){
 				dumpError();
-				return lex.ErrorMessages;
+				return [null, lex.ErrorMessages];
 			}
 			passFinish();
 			dumpChunk();
 
-			return lex.Chunks;
+			return [lex.Chunks, lex.ErrorMessages];
 		}
 
 		private ResetLexicalStatus(){
@@ -2109,8 +2109,8 @@ namespace Assembler{
 				print(errorStrings[i]);
 			}
 		}
-
 	}
+
 	type ErrorMessage = {
 		File: string;
 		Line: number;
@@ -2190,6 +2190,92 @@ namespace Assembler{
 		Pattern: string			= '';
 		Addressing: Emulator.Addressing	= Emulator.Addressing.Implied;
 		Fallback: boolean		= true;
+	}
+
+	export class HexFile{
+		public static ChunksToIntelHex(chunks: DataChunk[]): string[] {
+			const hexFile: string[]	= [];
+
+			const pushData	= (data: number[]) => {
+				let checksum	= 0;
+				let str		= ':';
+				data[0]		= data.length - 4;
+				for(let i = 0; i < data.length; i++){
+					const value	= Utility.Type.ToByte(data[i]);
+					checksum	+= value;
+					str		+= Utility.Format.ToHexString(value, 2);
+				}
+				checksum	= Utility.Type.ToByte(-checksum);
+				str		+= Utility.Format.ToHexString(checksum, 2);
+				hexFile.push(str);
+			}
+
+			for(let c = 0; c < chunks.length; c++){
+				const chunk	= chunks[c];
+
+				// 24 bit address (bank)
+				pushData([0x02, 0x00, 0x00, 0x04, chunk.Address >> 24, chunk.Address >> 16]);
+
+				// data
+				let content: number[]	= [0x00, chunk.Address >> 8, chunk.Address, 0x00];
+				for(let i = 0; i < chunk.Data.length; i++){
+					if(content.length >= (16 + 4)){
+						pushData(content);
+						const address	= chunk.Address + i;
+						content	= [0x00, address >> 8, address, 0x00];
+					}
+					content.push(chunk.Data[i]);
+				}
+				if(content.length > 4){
+					pushData(content);
+				}
+
+				// EOF
+				pushData([0x00, 0x00, 0x00, 0x01]);
+			}
+
+			return hexFile;
+		}
+		public static ChunksToSRec(chunks: DataChunk[]): string[]{
+			// S28 format
+			const hexFile: string[]	= [];
+
+			const pushData	= (data: number[]) => {
+				let checksum	= Utility.Type.ToByte(data.length - 1);
+				let str		= 'S' + data[0] + Utility.Format.ToHexString(checksum, 2);
+				for(let i = 2; i < data.length; i++){
+					const value	= Utility.Type.ToByte(data[i]);
+					checksum	+= value;
+					str		+= Utility.Format.ToHexString(value, 2);
+				}
+				checksum	= Utility.Type.ToByte(checksum ^ 0xFF);
+				str		+= Utility.Format.ToHexString(checksum, 2);
+				hexFile.push(str);
+			}
+
+			for(let c = 0; c < chunks.length; c++){
+				const chunk	= chunks[c];
+
+				// data
+				let content: number[]	= [0x02, 0x00, chunk.Address >> 16, chunk.Address >> 8, chunk.Address];
+				for(let i = 0; i < chunk.Data.length; i++){
+					if(content.length >= (16 + 5)){
+						pushData(content);
+						const address	= chunk.Address + i;
+						content	= [0x02, 0x00, address >> 16, address >> 8, address];
+					}
+					content.push(chunk.Data[i]);
+				}
+				if(content.length > 5){
+					pushData(content);
+				}
+
+				// EOF
+				pushData([0x08, 0x00, 0x00, 0x00, 0x00]);
+			}
+
+			return hexFile;
+		}
 	}
 }
 
@@ -2332,7 +2418,26 @@ ResolveTest:
 
 	`;
 	Assembler.Assembler.Verbose	= true;
-	const assemble	= Assembler.Assembler.Assemble(code);
+	const [assembled, errorMessage]	= Assembler.Assembler.Assemble(code);
+
+	if(assembled !== null){
+		console.log('%c' + (`----- Intel HEX ` + '-'.repeat(50)).substring(0, 50), 'background-color: silver');
+		const records	= Assembler.HexFile.ChunksToIntelHex(assembled);
+		let hexFile	= '';
+		for(let i = 0; i < records.length; i++){
+			hexFile	+= records[i] + '\n';
+		}
+		console.log(hexFile);
+	}
+	if(assembled !== null){
+		console.log('%c' + (`----- SREC ` + '-'.repeat(50)).substring(0, 50), 'background-color: silver');
+		const records	= Assembler.HexFile.ChunksToSRec(assembled);
+		let hexFile	= '';
+		for(let i = 0; i < records.length; i++){
+			hexFile	+= records[i] + '\n';
+		}
+		console.log(hexFile);
+	}
 }
 
 
