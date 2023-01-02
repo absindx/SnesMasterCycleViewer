@@ -773,11 +773,14 @@ namespace Assembler{
 
 		private ErrorMessages: ErrorMessage[]			= [];
 
+		private StartAddress: number				= 0x008000;
+
 		/** true = Output log to console / false = Do not output log */
 		public static Verbose: boolean				= false;
 
-		public static Assemble(code: string): [DataChunk[] | null, ErrorMessage[]]{
-			const lex	= new Assembler();
+		public static Assemble(code: string, startAddress: number = 0x008000): [DataChunk[] | null, ErrorMessage[]]{
+			const lex		= new Assembler();
+			lex.StartAddress	= startAddress;
 
 			const sectionLog	= (str: string) => {
 				console.log('%c' + (`----- ${str} ` + '-'.repeat(50)).substring(0, 50), 'background-color: silver');
@@ -839,7 +842,7 @@ namespace Assembler{
 
 		private ResetLexicalStatus(){
 			this.NowScopeName	= '';
-			this.NowAddress		= 0;
+			this.NowAddress		= this.StartAddress;
 			this.NowDirectPage	= 0;
 			this.NowMemoryLength	= true;
 			this.NowIndexLength	= true;
@@ -1424,6 +1427,7 @@ namespace Assembler{
 		private GenerateBinary(): boolean{
 			let token: Token;
 			let chunk	= new DataChunk();
+			chunk.Address	= this.NowAddress;
 
 			const pushError		= (message: string) => {
 				this.ErrorMessages.push({
@@ -2303,6 +2307,8 @@ namespace Assembler{
 namespace Application{
 
 	export class Main{
+		private static readonly AssembleStartAddress	= 0xC80000;
+
 		public static Assembled: Assembler.DataChunk[] | null	= null;
 		static Dom: {[name: string]: HTMLElement}	= {
 			'ErrorMessage':		document.createElement('span'),
@@ -2315,6 +2321,8 @@ namespace Application{
 		};
 
 		public static Initialize(){
+			Main.Assembled	= null;
+
 			if(!Main.GetDomElements()){
 				return;
 			}
@@ -2351,12 +2359,15 @@ namespace Application{
 		}
 
 		public static Assemble(){
+			Main.Assembled	= null;
+
 			const sourceElement	= Main.Dom.AssemblerSource as HTMLInputElement;
-			const source	= sourceElement.value;
+			const source		= sourceElement.value;
 			if(!source){
+				Main.SetAssemblerError(false, []);
 				return;
 			}
-			const [assembled, message]	= Assembler.Assembler.Assemble(source);
+			const [assembled, message]	= Assembler.Assembler.Assemble(source, Main.AssembleStartAddress);
 			if(assembled === null){
 				Main.SetAssemblerError(false, message);
 				return;
@@ -2370,6 +2381,8 @@ namespace Application{
 			Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
 
 			Main.SetAssemblerError(true, []);
+
+			Main.Assembled	= assembled;
 		}
 
 		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
