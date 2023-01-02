@@ -2304,7 +2304,7 @@ namespace Application{
 
 	export class Main{
 		public static Assembled: Assembler.DataChunk[] | null	= null;
-		static Dom: {[name: string]: Element}	= {
+		static Dom: {[name: string]: HTMLElement}	= {
 			'ErrorMessage':		document.createElement('span'),
 			'AssemblerSource':	document.createElement('span'),
 			'AssemblerOutput':	document.createElement('span'),
@@ -2321,13 +2321,15 @@ namespace Application{
 
 			Main.Dom.ErrorMessage.classList.add('hide');
 
+			Main.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
+
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 		}
 
 		private static GetDomElements(): boolean{
 			const set	= (name: string): boolean => {
-				const element	= document.querySelector('#' + name);
+				const element	= document.querySelector<HTMLElement>('#' + name);
 				if(element){
 					Main.Dom[name]	= element;
 					return true;
@@ -2349,7 +2351,8 @@ namespace Application{
 		}
 
 		public static Assemble(){
-			const source	= Main.Dom.AssemblerSource.textContent;
+			const sourceElement	= Main.Dom.AssemblerSource as HTMLInputElement;
+			const source	= sourceElement.value;
 			if(!source){
 				return;
 			}
@@ -2365,6 +2368,8 @@ namespace Application{
 			Main.SetTextareaStrings(Main.Dom.HexIntelHex, intelHex);
 			const mSrec	= Assembler.HexFile.ChunksToSRec(assembled);
 			Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
+
+			Main.SetAssemblerError(true, []);
 		}
 
 		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
@@ -2393,6 +2398,46 @@ namespace Application{
 		}
 		private static ClearTextarea(textarea: Element){
 			textarea.textContent	= '';
+		}
+
+		private static AllowTab(element: HTMLInputElement){
+			element.addEventListener('keydown', (e: KeyboardEvent) => {
+				Main.AllowTabEvent(element, e);
+			});
+		}
+		private static AllowTabEvent(obj: HTMLInputElement, e: KeyboardEvent){
+			if(e.key !== 'Tab'){
+				return;
+			}
+			e.preventDefault();
+
+			let value		= obj.value;
+			const selectStart	= obj.selectionStart ?? 0;
+			const selectEnd		= obj.selectionEnd ?? 0;
+			const selectLeft	= value.substring(0, selectStart);
+			let selectContent	= value.substring(selectStart, selectEnd);
+			const selectRight	= value.substring(selectEnd);
+			if(!e.shiftKey){
+				const replaceBefore	= selectContent.length;
+				selectContent		= selectContent.replace(/\n/g, '\n\t');
+				const replaceCount	= selectContent.length - replaceBefore;
+
+				value			= selectLeft + '\t' + selectContent + selectRight;
+				obj.value		= value;
+				obj.selectionStart	= selectStart + 1;
+				obj.selectionEnd	= selectEnd + 1 + replaceCount;
+			}
+			else{
+				const replaceBefore	= selectContent.length;
+				selectContent		= selectContent.replace(/\n\t/g, '\n');
+				selectContent		= selectContent.replace(/^\t/g, '');
+				const replaceCount	= replaceBefore - selectContent.length;
+
+				value			= selectLeft + selectContent + selectRight;
+				obj.value		= value;
+				obj.selectionStart	= selectStart;
+				obj.selectionEnd	= selectEnd - replaceCount;
+			}
 		}
 	}
 
