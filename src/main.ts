@@ -800,11 +800,11 @@ namespace Assembler{
 				}
 			}
 			const dumpError		= () => {
-				sectionLog(`Error`);
-				const consoleErrorLog	= (message: string) => {
-					console.log('%c' + message, 'color: red');
-				}
 				if(Assembler.Verbose){
+					sectionLog(`Error`);
+					const consoleErrorLog	= (message: string) => {
+						console.log('%c' + message, 'color: red');
+					}
 					lex.DumpErrors(consoleErrorLog);
 				}
 			}
@@ -1054,7 +1054,7 @@ namespace Assembler{
 			pushToken: (tokenType: CodeTokenType, options: (string | number | TokenOption | null)[]) => void,
 			pushError: (message: string) => void,
 		): string | null{
-			const instructionMatch		= line.match(/^([A-Z]+)\s*(\.\s*([bwl]))?\s*(.*)/i);
+			const instructionMatch		= line.match(/^([A-Z]+)(\.\s*([bwl]))?\s*(.*)/i);
 			if(!instructionMatch){
 				return null;
 			}
@@ -2063,11 +2063,11 @@ namespace Assembler{
 			return null;
 		}
 
-		private GetErrorStrings(newline: string = '\n'): string[]{
+		public static ConvertErrorStrings(errorMessages: ErrorMessage[], newline: string = '\n'): string[]{
 			const errorStrings: string[]	= [];
 
-			for(let i = 0; i < this.ErrorMessages.length; i++){
-				const m	= this.ErrorMessages[i];
+			for(let i = 0; i < errorMessages.length; i++){
+				const m	= errorMessages[i];
 				errorStrings.push(`[${i}] Line:${m.Line} ${m.Message}` + newline + m.Source);
 			}
 
@@ -2103,7 +2103,7 @@ namespace Assembler{
 		}
 		private DumpErrors(print: (message: string) => void = console.log){
 			// for debug
-			const errorStrings	= this.GetErrorStrings();
+			const errorStrings	= Assembler.ConvertErrorStrings(this.ErrorMessages);
 
 			for(let i = 0; i < errorStrings.length; i++){
 				print(errorStrings[i]);
@@ -2111,7 +2111,7 @@ namespace Assembler{
 		}
 	}
 
-	type ErrorMessage = {
+	export type ErrorMessage = {
 		File: string;
 		Line: number;
 		Source: string;
@@ -2193,6 +2193,25 @@ namespace Assembler{
 	}
 
 	export class HexFile{
+		public static ChunksToText(chunks: DataChunk[], columns = 16): string[] {
+			const hexFile: string[]	= [];
+
+			for(let i = 0; i < chunks.length; i++){
+				const chunk		= chunks[i];
+				let str			= `[${i}] $${Utility.Format.ToHexString(chunk.Address, 6)} ${chunk.Data.length} byte(s)`;
+
+				for(let j = 0; j < chunk.Data.length; j++){
+					if((j % columns) == 0){
+						hexFile.push(str);
+						str	= `  $${Utility.Format.ToHexString(chunk.Address + j, 6)} :`;
+					}
+					str	+= ` ${Utility.Format.ToHexString(chunk.Data[j], 2)}`;
+				}
+				hexFile.push(str);
+			}
+
+			return hexFile;
+		}
 		public static ChunksToIntelHex(chunks: DataChunk[]): string[] {
 			const hexFile: string[]	= [];
 
@@ -2281,7 +2300,103 @@ namespace Assembler{
 
 //--------------------------------------------------
 
-// Main program
+namespace Application{
+
+	export class Main{
+		public static Assembled: Assembler.DataChunk[] | null	= null;
+		static Dom: {[name: string]: Element}	= {
+			'ErrorMessage':		document.createElement('span'),
+			'AssemblerSource':	document.createElement('span'),
+			'AssemblerOutput':	document.createElement('span'),
+			'HexIntelHex':		document.createElement('span'),
+			'HexSrec':		document.createElement('span'),
+			'AssemblerAssemble':	document.createElement('span'),
+			'AssembledRun':		document.createElement('span'),
+		};
+
+		public static Initialize(){
+			if(!Main.GetDomElements()){
+				return;
+			}
+
+			Main.Dom.ErrorMessage.classList.add('hide');
+
+			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
+			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
+		}
+
+		private static GetDomElements(): boolean{
+			const set	= (name: string): boolean => {
+				const element	= document.querySelector('#' + name);
+				if(element){
+					Main.Dom[name]	= element;
+					return true;
+				}
+				return false;
+			}
+			if(	true	// placeholder
+				&& set("ErrorMessage")
+				&& set("AssemblerSource")
+				&& set("AssemblerOutput")
+				&& set("HexIntelHex")
+				&& set("HexSrec")
+				&& set("AssemblerAssemble")
+				&& set("AssembledRun")
+			){
+				return true;
+			}
+			return false;
+		}
+
+		public static Assemble(){
+			const source	= Main.Dom.AssemblerSource.textContent;
+			if(!source){
+				return;
+			}
+			const [assembled, message]	= Assembler.Assembler.Assemble(source);
+			if(assembled === null){
+				Main.SetAssemblerError(false, message);
+				return;
+			}
+
+			const outputHex	= Assembler.HexFile.ChunksToText(assembled);
+			Main.SetTextareaStrings(Main.Dom.AssemblerOutput, outputHex);
+			const intelHex	= Assembler.HexFile.ChunksToIntelHex(assembled);
+			Main.SetTextareaStrings(Main.Dom.HexIntelHex, intelHex);
+			const mSrec	= Assembler.HexFile.ChunksToSRec(assembled);
+			Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
+		}
+
+		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
+			const className	= 'errorMessage';
+			if(success){
+				Main.Dom.AssemblerOutput.classList.remove(className);
+				Main.Dom.AssembledRun.removeAttribute('disabled');
+			}
+			else{
+				const messages	= Assembler.Assembler.ConvertErrorStrings(errorMessages);
+				Main.SetTextareaStrings(Main.Dom.AssemblerOutput, messages);
+				Main.Dom.AssemblerOutput.classList.add(className);
+
+				Main.ClearTextarea(Main.Dom.HexIntelHex);
+				Main.ClearTextarea(Main.Dom.HexSrec);
+				Main.Dom.AssembledRun.setAttribute('disabled', '');
+			}
+		}
+		private static SetTextareaStrings(textarea: Element, strings: string[]){
+			let text	= '';
+			for(let i = 0; i < strings.length; i++){
+				text	+= strings[i] + '\n';
+			}
+
+			textarea.textContent	= text;
+		}
+		private static ClearTextarea(textarea: Element){
+			textarea.textContent	= '';
+		}
+	}
+
+}
 
 //--------------------------------------------------
 

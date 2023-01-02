@@ -11,6 +11,49 @@
    <h1>SNES master cycle viewer</h1>
   </header>
   <main>
+   <section id="ErrorMessage">
+    <p>
+     System initialization failed.
+    </p>
+   </section>
+   <section id="Assembler">
+    <h2>Assembler</h2>
+    <article>
+     <div id="AssemblerContainer">
+
+      <div id="AssemblerMain">
+       <h3>Input source</h3>
+       <textarea id="AssemblerSource" rows="16">		.m8 .i8
+Start:		LDA	#$55
+		STA	$00
+		LDX	#$08
+.Loop		LSR	$00
+		ROL
+		DEX
+		BNE	.Loop
+		STP
+</textarea>
+       <h3>Output log</h3>
+       <textarea id="AssemblerOutput" readonly rows="8"></textarea>
+      </div>
+      <div id="AssemblerHexfile">
+       <div id="AssemblerHexfileIHex">
+        <h3>Intel HEX</h3>
+        <textarea id="HexIntelHex" readonly></textarea>
+       </div>
+       <div id="AssemblerHexfileSrec">
+        <h3>Motorola S-record (S28)</h3>
+        <textarea id="HexSrec"     readonly></textarea>
+       </div>
+      </div>
+     </div>
+     <div id="AssemblerController">
+      <input id="AssemblerAssemble" type="button" value="Assemble" disabled>
+      <input id="AssembledRun"      type="button" value="Run"      disabled>
+
+     </div>
+    </article>
+   </section>
 
   </main>
 
@@ -18,5 +61,8 @@
    <p class="author"><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></p>
   </footer>
   <script src="main.js"></script>
+  <script>
+   Application.Main.Initialize();
+  </script>
  </body>
 </html>
