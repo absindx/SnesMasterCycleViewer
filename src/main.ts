@@ -398,9 +398,9 @@ namespace Emulator{
 
 		public WriteValue(address: number, data: number, romWrite: boolean = false): MemoryWriteResult{
 			const [region, realAddress]	= this.ToRealAddress(address);
-			if(this.HookIOWrite(realAddress)){
+			if(!this.HookIOWrite(realAddress)){
 				if((region !== AccessRegion.ROM) || romWrite){
-					this.AddressSpace[address]	= data;
+					this.AddressSpace[realAddress]	= data;
 				}
 			}
 
@@ -490,8 +490,7 @@ namespace Emulator{
 			switch(address){
 				case 0x002100:
 					// TODO: Implements
-					// return true;
-					break;
+					return true;
 			}
 			return false;
 		}
@@ -506,7 +505,7 @@ namespace Emulator{
 			let speed	= (this.IsFastROM)? AccessSpeed.Fast : AccessSpeed.Slow;
 
 			const bank	= address >> 16;
-			const page	= address && 0x00FFFF;
+			const page	= address & 0x00FFFF;
 			if(bank <= 0x3F){
 				if(     page <= 0x1FFF){ speed	= AccessSpeed.Slow;	}	// $00-3F:0000-1FFF
 				else if(page <= 0x20FF){ speed	= AccessSpeed.Fast;	}	// $00-3F:2000-20FF
@@ -2423,7 +2422,9 @@ namespace Application{
 	export class Main{
 		private static readonly AssembleStartAddress	= 0x808000;	// FastROM area and address where RAM can be accessed for both LoROM and HiROM
 
-		public static Assembled: Assembler.DataChunk[] | null	= null;
+		private static Assembled: Assembler.DataChunk[] | null	= null;
+		private static Memory: Emulator.Memory			= new Emulator.Memory();
+
 		static Dom: {[name: string]: HTMLElement}	= {
 			'ErrorMessage':		document.createElement('span'),
 			'AssemblerSource':	document.createElement('span'),
@@ -2447,6 +2448,7 @@ namespace Application{
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
+			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
 		}
 
 		private static GetDomElements(): boolean{
@@ -2497,6 +2499,49 @@ namespace Application{
 			Main.SetAssemblerError(true, []);
 
 			Main.Assembled	= assembled;
+		}
+
+		public static Run(){
+			const memory	= new Emulator.Memory();
+			Main.Memory	= memory;
+
+			// TODO: Set from form
+			memory.ROMMapping	= Emulator.ROMMapping.LoROM;
+			memory.IsFastROM	= false;
+			const maxCycle		= 10000;
+
+			Main.UploadDefaultMemory();
+			Main.UploadMemory();
+		}
+
+		private static UploadChunk(memory: Emulator.Memory, chunk: Assembler.DataChunk){
+			for(let i = 0; i < chunk.Data.length; i++){
+				memory.WriteValue(chunk.Address + i, chunk.Data[i], true);
+			}
+		}
+		private static UploadDefaultMemory(){
+			const resetVector: Assembler.DataChunk	= {
+				Address: 0xFFFFE0,
+				Data: []
+			}
+			const pushLong	= (chunk: Assembler.DataChunk, value: number) => {
+				chunk.Data.push(Utility.Type.ToByte(value >>  0));
+				chunk.Data.push(Utility.Type.ToByte(value >>  8));
+				chunk.Data.push(Utility.Type.ToByte(value >> 16));
+			}
+			for(let i = 0; i < 16; i++){
+				pushLong(resetVector, Main.AssembleStartAddress);
+			}
+
+			Main.UploadChunk(Main.Memory, resetVector);
+		}
+		private static UploadMemory(){
+			if(Main.Assembled === null){
+				return;
+			}
+			for(let i = 0; i < Main.Assembled.length; i++){
+				Main.UploadChunk(Main.Memory, Main.Assembled[i]);
+			}
 		}
 
 		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
@@ -2727,6 +2772,7 @@ ResolveTest:
 	}
 }
 
+/*
 function TestAddressConvert(){
 	const skipPass		= false;
 
@@ -3150,5 +3196,6 @@ function TestAddressConvert(){
 	console.log(`%cLo: ${passLo} / ${count}`, getColor(passLo === count));
 	console.log(`%cHi: ${passHi} / ${count}`, getColor(passHi === count));
 }
+*/
 
 
