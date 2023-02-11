@@ -197,7 +197,243 @@ namespace Utility{
 
 namespace Emulator{
 	export class Cpu{
-		// TODO: Implements
+		public Registers: Registers		= new Registers();
+		//private Memory: Memory		= new Memory();
+		public CycleCounter: number		= 0;
+		private NextInstructionCounter: number	= 0;
+		public Logs: StepLog[]			= [];
+
+		public CpuHalted			= false;
+		private CpuSlept			= false;
+
+		private PendingRst: boolean		= true;
+		private PendingAbt: boolean		= false;
+		private PendingNmi: boolean		= false;
+		private PendingIrq: boolean		= false;
+
+		private yieldFunction: Generator | null	= null;
+
+		public InitialRegisters: Registers | null	= null;
+
+		public constructor(
+			private Memory: Memory
+		){
+			this.Reset();
+		}
+
+		public Boot(){
+			this.Registers			= new Registers();
+			this.PendingRst			= true;
+		}
+		public RST(){
+			this.PendingRst			= true;
+		}
+		public ABT(){
+			this.PendingRst			= true;
+		}
+		public NMI(){
+			this.PendingRst			= true;
+		}
+		public IRQ(){
+			this.PendingRst			= true;
+		}
+
+		public Clock(){
+			if(this.PendingRst){
+				this.Reset();
+				this.JumpInterruptHandler(InterruptType.EmulationRST);
+				this.PendingRst		= false;
+			}
+			if(this.CpuHalted){
+				return;
+			}
+
+			// TODO: Implement interrupts
+
+			// Get next instruction
+			if(this.yieldFunction === null){
+				this.yieldFunction	= this.ExecuteInstruction();
+			}
+			const execute	= this.yieldFunction.next();
+			if(execute.done){
+				this.yieldFunction	= null;
+			}
+		}
+		public Step(){
+			do{
+				this.Clock();
+			}while(this.yieldFunction !== null);
+			//}while(this.NextInstructionCounter > 0);
+		}
+
+		private Reset(){
+			//this.Registers			= new Registers();
+			this.CycleCounter		= 0;
+			this.NextInstructionCounter	= 0;
+			//this.Logs			= [];
+			this.CpuHalted			= false;
+			this.CpuSlept			= false;
+			this.PendingRst			= true;
+			this.PendingAbt			= false;
+			this.PendingNmi			= false;
+			this.PendingIrq			= false;
+			this.yieldFunction		= null;
+
+			this.Registers.SetStatusFlagD(false);
+			this.Registers.SetStatusFlagI(true);
+			this.Registers.SetStatusFlagE(true);
+
+			if(this.InitialRegisters !== null){
+				this.Registers	= this.InitialRegisters;
+			}
+		}
+
+		public GetRegisters(): Registers{
+			return this.Registers.Clone();
+		}
+
+		private* ExecuteInstruction(){
+			const log		= new StepLog();
+			this.Logs.push(log);
+			log.CpuCycle		= this.CycleCounter;
+			log.Registers		= this.GetRegisters();
+			log.InstructionAddress	= this.Registers.GetFullProgramCounter();
+
+			const opcode		= this.FetchProgramByte(AccessType.FetchOpcode);
+			log.Instruction		= opcode[0].Data;
+			log.AccessLog.push(opcode[1]);
+			yield;
+
+			const PushDummyRead	= () => {
+				// VDA = 0, VPA = 0, RWB = 1
+				log.AccessLog.push({
+					AddressBus: this.Memory.AddressBus,
+					DataBus: this.Memory.DataBus,
+					Type: AccessType.DummyRead,
+					Cycle: AccessSpeed.Fast,
+				});
+			}
+			const PushDummyWrite	= () => {
+				// VDA = 0, VPA = 0, RWB = 0
+				log.AccessLog.push({
+					AddressBus: this.Memory.AddressBus,
+					DataBus: this.Memory.DataBus,
+					Type: AccessType.DummyWrite,
+					Cycle: AccessSpeed.Fast,
+				});
+			}
+
+			const cpu	= this;
+			const InstructionTable: Generator[]	= [
+				function*(){	// 00: BRK
+					yield;
+				}(),
+				function*(){	// 01: ORA (dp, X)
+
+					const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
+					log.AccessLog.push(operand1Low[1]);
+					yield;
+
+					if(!cpu.Registers.IsZeroDRegisterLow()){
+						PushDummyRead();
+						yield;
+					}
+					PushDummyRead();
+					yield;
+
+					const operand1			= operand1Low[0].Data;
+					const indirectAddress		= cpu.Registers.D + operand1 + cpu.Registers.GetRegisterX();
+
+					const effectiveAddressLow	= cpu.FetchDataByte(AccessType.ReadIndirect, indirectAddress + 0);
+					log.AccessLog.push(effectiveAddressLow[1]);
+					yield;
+					const effectiveAddressHigh	= cpu.FetchDataByte(AccessType.ReadIndirect, indirectAddress + 1);
+					log.AccessLog.push(effectiveAddressHigh[1]);
+					const effectiveAddress		= (effectiveAddressHigh[0].Data << 8) + effectiveAddressLow[0].Data;
+					yield;
+
+					let readValueLow		= cpu.FetchDataByte(AccessType.Read, effectiveAddress);
+					log.AccessLog.push(readValueLow[1]);
+					let readValue			= readValueLow[0].Data;
+
+					if(!cpu.Registers.GetStatusFlagM()){
+						yield;
+						let readValueHigh	= cpu.FetchDataByte(AccessType.Read, effectiveAddress);
+						log.AccessLog.push(readValueHigh[1]);
+						readValue		|= (readValueHigh[0].Data << 8);
+					}
+
+					cpu.Registers.SetRegisterA(readValue);
+
+					log.Instruction		= Instruction.ORA;
+					log.Addressing		= Addressing.DirectpageIndexedIndirectX;
+					log.InstructionLength	= 2;
+					log.Operand1		= operand1Low[0].Data;
+					log.IndirectAddress	= indirectAddress;
+					log.EffectiveValue	= readValue;
+
+					return;
+				}(),
+			];
+
+			const instructionFunction	= InstructionTable[opcode[0].Data];
+			let execute: IteratorResult<unknown, any>;
+			do{
+				execute	= instructionFunction.next();
+			}while(!execute.done)
+
+			this.CycleCounter	+= log.GetExecuteCycle();
+		}
+
+		private JumpInterruptHandler(interrupt: InterruptType){
+			const readAddress	= interrupt as number;
+			const address		=
+				(this.Memory.ReadByte(readAddress    ).Data     ) |
+				(this.Memory.ReadByte(readAddress + 1).Data << 8)
+			;
+			this.Registers.SetFullProgramCounter(address);
+		}
+
+		private IncrementProgramCounter(){
+			const address	= this.Registers.GetFullProgramCounter();
+			this.Registers.SetProgramCounter(address + 1);
+		}
+		private FetchProgramByte(accessType: AccessType, incrementPC: boolean = true): [MemoryReadResult, AccessLog] {
+			const address	= this.Registers.GetFullProgramCounter();
+			const access	= this.Memory.ReadByte(address);
+
+			if(incrementPC){
+				this.IncrementProgramCounter();
+			}
+
+			return [access, {
+				AddressBus: address,
+				DataBus: access.Data,
+				Type: accessType,
+				Cycle: access.Speed,
+			}];
+		}
+		private FetchDataByte(accessType: AccessType, address: number): [MemoryReadResult, AccessLog] {
+			const access	= this.Memory.ReadByte(address);
+
+			return [access, {
+				AddressBus: address,
+				DataBus: access.Data,
+				Type: accessType,
+				Cycle: access.Speed,
+			}];
+		}
+		private WriteDataByte(accessType: AccessType, address: number, value: number): [MemoryWriteResult, AccessLog] {
+			const access	= this.Memory.WriteByte(address, value);
+
+			return [access, {
+				AddressBus: address,
+				DataBus: value,
+				Type: accessType,
+				Cycle: access.Speed,
+			}];
+		}
+
 	}
 
 	export class Registers{
@@ -349,6 +585,55 @@ namespace Emulator{
 			this.S	= (this.S & 0x00FF) | 0x0100;
 		}
 
+		public GetRegisterA(): number{
+			if(this.GetStatusFlagM()){
+				return Utility.Type.ToWord(this.A);
+			}
+			else{
+				return Utility.Type.ToByte(this.A);
+			}
+		}
+		public GetRegisterX(): number{
+			if(this.GetStatusFlagX()){
+				return Utility.Type.ToWord(this.X);
+			}
+			else{
+				return Utility.Type.ToByte(this.X);
+			}
+		}
+		public GetRegisterY(): number{
+			if(this.GetStatusFlagX()){
+				return Utility.Type.ToWord(this.Y);
+			}
+			else{
+				return Utility.Type.ToByte(this.Y);
+			}
+		}
+		public SetRegisterA(value: number){
+			if(this.GetStatusFlagM()){
+				this.A	= Utility.Type.ToWord(value);
+			}
+			else{
+				this.A	= (this.A & 0xFF00) | Utility.Type.ToByte(value);
+			}
+		}
+		public SetRegisterX(value: number){
+			if(this.GetStatusFlagX()){
+				this.X	= Utility.Type.ToWord(value);
+			}
+			else{
+				this.X	= Utility.Type.ToByte(value);
+			}
+		}
+		public SetRegisterY(value: number){
+			if(this.GetStatusFlagX()){
+				this.Y	= Utility.Type.ToWord(value);
+			}
+			else{
+				this.Y	= Utility.Type.ToByte(value);
+			}
+		}
+
 		public GetRegisterStringA(value: number = this.A): string{
 			let digit	= (this.GetStatusFlagM())? 4 : 2;
 			return Utility.Format.ToHexString(value, digit);
@@ -362,8 +647,23 @@ namespace Emulator{
 			return Utility.Format.ToHexString(value, digit);
 		}
 
+		public SetFullProgramCounter(value: number){
+			this.PB	= Utility.Type.ToByte(value >> 16);
+			this.PC	= Utility.Type.ToWord(value);
+		}
+		public SetProgramCounter(value: number){
+			value	= Utility.Type.ToWord(value);
+			this.PC	= value;
+		}
+		public GetFullProgramCounter(): number{
+			return this.GetRelativeAddress(0);
+		}
 		public GetRelativeAddress(offset: number): number{
 			return (this.PB << 16) + Utility.Type.ToWord(this.PC + offset);
+		}
+
+		public IsZeroDRegisterLow(): boolean{
+			return Utility.Type.ToByte(this.D) <= 0;
 		}
 	};
 
@@ -396,7 +696,7 @@ namespace Emulator{
 			return result;
 		}
 
-		public WriteValue(address: number, data: number, romWrite: boolean = false): MemoryWriteResult{
+		public WriteByte(address: number, data: number, romWrite: boolean = false): MemoryWriteResult{
 			const [region, realAddress]	= this.ToRealAddress(address);
 			if(!this.HookIOWrite(realAddress)){
 				if((region !== AccessRegion.ROM) || romWrite){
@@ -412,8 +712,7 @@ namespace Emulator{
 			return result;
 		}
 
-		// TODO: public for debugging
-		public ToRealAddress(address: number): [AccessRegion, number]{
+		private ToRealAddress(address: number): [AccessRegion, number]{
 			const bank	= Utility.Type.ToByte(address >> 16);
 			const page	= Utility.Type.ToWord(address);
 
@@ -859,6 +1158,25 @@ namespace Emulator{
 	type MemoryWriteResult = {
 		Region: AccessRegion;
 		Speed: AccessSpeed;
+	}
+
+	enum InterruptType{
+		NativeReserved0		= 0x00FFE0,
+		NativeReserved2		= 0x00FFE2,
+		NativeCOP		= 0x00FFE4,
+		NativeBRK		= 0x00FFE6,
+		NativeABT		= 0x00FFE8,
+		NativeNMI		= 0x00FFEA,
+		NativeReservedC		= 0x00FFEC,
+		NativeIRQ		= 0x00FFEE,
+		EmulationReserved0	= 0x00FFF0,
+		EmulationReserved2	= 0x00FFF2,
+		EmulationCOP		= 0x00FFF4,
+		EmulationReserved6	= 0x00FFF6,
+		EmulationABT		= 0x00FFF8,
+		EmulationNMI		= 0x00FFFA,
+		EmulationRST		= 0x00FFFC,
+		EmulationIRQ		= 0x00FFFE,
 	}
 
 }
@@ -2420,10 +2738,11 @@ namespace Assembler{
 namespace Application{
 
 	export class Main{
-		private static readonly AssembleStartAddress	= 0x808000;	// FastROM area and address where RAM can be accessed for both LoROM and HiROM
+		private static readonly AssembleStartAddress		= 0x808000;	// FastROM area and address where RAM can be accessed for both LoROM and HiROM
 
 		private static Assembled: Assembler.DataChunk[] | null	= null;
 		private static Memory: Emulator.Memory			= new Emulator.Memory();
+		private static Cpu: Emulator.Cpu			= new Emulator.Cpu(this.Memory);
 
 		static Dom: {[name: string]: HTMLElement}	= {
 			'ErrorMessage':		document.createElement('span'),
@@ -2509,28 +2828,47 @@ namespace Application{
 			memory.ROMMapping	= Emulator.ROMMapping.LoROM;
 			memory.IsFastROM	= false;
 			const maxCycle		= 10000;
+			const statusFlagE	= false;
 
 			Main.UploadDefaultMemory();
 			Main.UploadMemory();
+
+			const cpu		= new Emulator.Cpu(Main.Memory);
+			Main.Cpu		= cpu;
+
+			const initialRegisters	= new Emulator.Registers();
+			initialRegisters.SetStatusFlagE(statusFlagE);
+			cpu.InitialRegisters	= initialRegisters;
+
+			cpu.Boot();
+
+			// while(!cpu.CpuHalted && (cpu.CycleCounter < maxCycle)){
+			// 	cpu.Step();
+			// }
+
+			cpu.Step();	// TODO: Debug
+			cpu.Step();	// TODO: Debug
+			for(let i = 0; i < cpu.Logs.length; i++){
+				console.log(`[${i}] ${cpu.Logs[i].GetLogString()}`);
+			}
 		}
 
 		private static UploadChunk(memory: Emulator.Memory, chunk: Assembler.DataChunk){
 			for(let i = 0; i < chunk.Data.length; i++){
-				memory.WriteValue(chunk.Address + i, chunk.Data[i], true);
+				memory.WriteByte(chunk.Address + i, chunk.Data[i], true);
 			}
 		}
 		private static UploadDefaultMemory(){
 			const resetVector: Assembler.DataChunk	= {
-				Address: 0xFFFFE0,
+				Address: 0x00FFE0,
 				Data: []
 			}
-			const pushLong	= (chunk: Assembler.DataChunk, value: number) => {
+			const pushWord	= (chunk: Assembler.DataChunk, value: number) => {
 				chunk.Data.push(Utility.Type.ToByte(value >>  0));
 				chunk.Data.push(Utility.Type.ToByte(value >>  8));
-				chunk.Data.push(Utility.Type.ToByte(value >> 16));
 			}
 			for(let i = 0; i < 16; i++){
-				pushLong(resetVector, Main.AssembleStartAddress);
+				pushWord(resetVector, Main.AssembleStartAddress);
 			}
 
 			Main.UploadChunk(Main.Memory, resetVector);
