@@ -344,10 +344,7 @@ namespace Emulator{
 				value		= Utility.Type.ToByte(value);
 				const address	= cpu.Registers.S;
 				const result	= cpu.WriteDataByte(AccessType.PushStack, address, value);
-				cpu.Registers.S--;
-				if(cpu.Registers.GetStatusFlagE()){
-					cpu.Registers.S	= 0x0100 | (cpu.Registers.S & 0x00FF);
-				}
+				cpu.Registers.SetRegisterS(cpu.Registers.S - 1);
 
 				log.AccessLog.push({
 					AddressBus: address,
@@ -357,10 +354,7 @@ namespace Emulator{
 				});
 			}
 			function pushPullStack(): number{
-				cpu.Registers.S++;
-				if(cpu.Registers.GetStatusFlagE()){
-					cpu.Registers.S	= 0x0100 | (cpu.Registers.S & 0x00FF);
-				}
+				cpu.Registers.SetRegisterS(cpu.Registers.S + 1);
 				const address	= cpu.Registers.S;
 				const result	= cpu.ReadDataByte(AccessType.PullStack, address);
 				const value	= result[0].Data;
@@ -381,7 +375,7 @@ namespace Emulator{
 
 			// Addressing
 			//--------------------------------------------------
-			function *AddressingAbs(){								// 01a: abs
+			function *AddressingAbsDbr(){								// 01a: abs
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
 				yield;
@@ -395,6 +389,30 @@ namespace Emulator{
 				const effectiveAddress		= (cpu.Registers.DB << 16) | operand1;
 
 				log.Addressing			= Addressing.Absolute;
+				log.Operand1			= operand1;
+				log.EffectiveAddress		= effectiveAddress;
+
+				yield* instructionFunction[1];
+			}
+			function *AddressingAbsPbr(waitFlag: boolean){						// 01b, 01c: abs (JMP, JSR)
+				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1Low[1]);
+				yield;
+
+				const operand1High		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1High[1]);
+				calculateInstructionLength();
+				yield;
+
+				if(waitFlag){
+					pushDummyAccess(AccessType.ReadDummy);
+					yield;
+				}
+
+				const operand1			= (operand1High[0].Data << 8) | (operand1Low[0].Data);
+				const effectiveAddress		= (cpu.Registers.PB << 16) | operand1;
+
+				log.Addressing			= Addressing.AbsoluteLong;	// disable memory access
 				log.Operand1			= operand1;
 				log.EffectiveAddress		= effectiveAddress;
 
@@ -439,13 +457,41 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			function *AddressingLong(){								// 04a: long
+			function *AddressingLong(){								// 04a, 04b: long
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
 				yield;
 
 				const operand1High		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1High[1]);
+				yield;
+
+				const operand1Bank		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1High[1]);
+				calculateInstructionLength();
+				yield;
+
+				const operand1			= (operand1Bank[0].Data << 16) | (operand1High[0].Data << 8) | (operand1Low[0].Data);
+
+				log.Addressing			= Addressing.AbsoluteLong;
+				log.Operand1			= operand1;
+				log.EffectiveAddress		= operand1;
+
+				yield* instructionFunction[1];
+			}
+			function *AddressingLongJsl(){								// 04c: long (JSL)
+				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1Low[1]);
+				yield;
+
+				const operand1High		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1High[1]);
+				yield;
+
+				pushPushStack(cpu.Registers.PB);
+				yield;
+
+				pushDummyAccess(AccessType.ReadDummy);
 				yield;
 
 				const operand1Bank		= cpu.FetchProgramByte(AccessType.FetchOperand);
@@ -921,14 +967,14 @@ namespace Emulator{
 				yield* AddressingImmediate(Addressing.ImmediateIndex, cpu.Registers.GetStatusFlagX());
 			}
 			function *AddressingImplied(additionalWait: boolean = false){				// 19: Impl
+				calculateInstructionLength();
+
 				pushDummyAccess(AccessType.ReadDummy);
 
 				if(additionalWait){
 					yield;
 					pushDummyAccess(AccessType.ReadDummy);
 				}
-
-				calculateInstructionLength();
 
 				log.Addressing			= Addressing.Implied;
 
@@ -945,6 +991,30 @@ namespace Emulator{
 				log.Addressing			= Addressing.Relative;
 				log.Operand1			= operand1;
 				log.EffectiveAddress		= effectiveAddress;
+
+				yield* instructionFunction[1];
+			}
+			function *AddressingStackPull(lengthFlag: boolean){					// 22b: S (PLA, PLB, PLD, PLP, PLX, PLY)
+				calculateInstructionLength();
+
+				pushDummyAccess(AccessType.ReadDummy);
+				yield;
+
+				pushDummyAccess(AccessType.ReadDummy);
+				yield;
+
+				const stackPointer	= cpu.Registers.S;
+				const stackLow		= pushPullStack();
+				let effectiveValue	= stackLow;
+				if(!lengthFlag){
+					yield;
+					const stackHigh	= pushPullStack();
+					effectiveValue	|= (stackHigh << 8);
+				}
+
+				log.Addressing			= Addressing.Stack;
+				log.EffectiveAddress		= stackPointer;
+				log.EffectiveValue		= effectiveValue;
 
 				yield* instructionFunction[1];
 			}
@@ -995,7 +1065,7 @@ namespace Emulator{
 				pushPushStack(statusRegister);
 				yield;
 
-				log.Addressing			= Addressing.Immediate8;
+				log.Addressing			= Addressing.Immediate8;	// show signature
 				log.Operand1			= operand1Low[0].Data;
 				log.EffectiveAddress		= stackPointer;
 				log.EffectiveValue		= operand1Low[0].Data;
@@ -1105,15 +1175,48 @@ namespace Emulator{
 
 				log.IndirectAddress	= fetchVector;
 			}
+			function *InstructionSetRegister(instruction: Instruction, destination: string){
+				log.Instruction			= instruction;
+
+				cpu.Registers.SetRegisters({[destination]: log.EffectiveValue});
+			}
 			function *InstructionTxx(instruction: Instruction, sourceValue: number, destination: string){
 				log.Instruction			= instruction;
 
 				cpu.Registers.SetRegisters({[destination]: sourceValue});
 			}
 
-			function *InstructionASLRegister(){
+			function *InstructionAND(imm: boolean = false){
+				let effectiveValue		= cpu.Registers.GetRegisterA();
+				let readValue			= 0;
+
+				if(imm){
+					readValue		= log.Operand1;
+				}
+				else{
+					const readValueLow		= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
+					log.AccessLog.push(readValueLow[1]);
+					readValue			= readValueLow[0].Data;
+
+					if(!cpu.Registers.GetStatusFlagM()){
+						yield;
+						const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
+						log.AccessLog.push(readValueHigh[1]);
+						readValue		|= (readValueHigh[0].Data << 8);
+					}
+				}
+
+				effectiveValue		&= readValue;
+				cpu.Registers.SetRegisterA(effectiveValue);
+				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
+
+				log.Instruction		= Instruction.AND;
+				log.EffectiveValue	= readValue;
+			}
+			function *InstructionASLRegister(carry: boolean){
 				const effectiveValue	= cpu.Registers.GetRegisterA();
-				let writeValue		= (effectiveValue << 1) & cpu.Registers.GetMaskM();
+				const intCarry		= (carry)? 1 : 0;
+				let writeValue		= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
@@ -1122,10 +1225,11 @@ namespace Emulator{
 
 				log.Instruction		= Instruction.ASL;
 			}
-			function *InstructionASLMemory(){
+			function *InstructionASLMemory(carry: boolean){
 				const effectiveAddress	= log.EffectiveAddress;
 				const effectiveValue	= log.EffectiveValue;
-				let writeValue		= (effectiveValue << 1) & cpu.Registers.GetMaskM();
+				const intCarry		= (carry)? 1 : 0;
+				let writeValue		= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
@@ -1139,6 +1243,32 @@ namespace Emulator{
 				log.AccessLog.push(writeValueLow[1]);
 
 				log.Instruction		= Instruction.ASL;
+			}
+			function *InstructionBIT(){
+				let readValue			= 0;
+
+				const readValueLow		= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
+				log.AccessLog.push(readValueLow[1]);
+				readValue			= readValueLow[0].Data;
+
+				if(!cpu.Registers.GetStatusFlagM()){
+					yield;
+					const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
+					log.AccessLog.push(readValueHigh[1]);
+					readValue		|= (readValueHigh[0].Data << 8);
+				}
+
+				const result		= readValue & cpu.Registers.GetRegisterA();
+
+				const nMask		= cpu.Registers.GetMsbMaskM();
+				const vMask		= nMask >> 1;
+
+				cpu.Registers.SetStatusFlagN((readValue & nMask) !== 0);
+				cpu.Registers.SetStatusFlagV((readValue & vMask) !== 0);
+				cpu.Registers.SetStatusFlagZ(result === 0);
+
+				log.Instruction		= Instruction.BIT;
+				log.EffectiveValue	= readValue;
 			}
 			function *InstructionBRK(){
 				log.Instruction		= Instruction.BRK;
@@ -1201,6 +1331,19 @@ namespace Emulator{
 				log.AccessLog.push(writeValueLow[1]);
 
 				log.Instruction		= Instruction.INC;
+			}
+			function *InstructionJSR(instruction: Instruction, addressMask: number){
+				const jumpAddress	= log.Operand1 & addressMask;
+				const pushValue		= cpu.Registers.PC;
+
+				pushPushStack(pushValue >> 8);
+				yield;
+
+				pushPushStack(pushValue);
+
+				cpu.Registers.SetProgramCounter(jumpAddress);
+
+				log.Instruction		= instruction;
 			}
 			function *InstructionORA(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1271,15 +1414,15 @@ namespace Emulator{
 				[AddressingStackRel(),					InstructionORA()							],	// 03: ORA sr, S
 				[AddressingDpRmw(),					InstructionTSB()							],	// 04: TSB dp
 				[AddressingDp(),					InstructionORA()							],	// 05: ORA dp
-				[AddressingDpRmw(),					InstructionASLMemory()							],	// 06: ASL dp
+				[AddressingDpRmw(),					InstructionASLMemory(false)						],	// 06: ASL dp
 				[AddressingDpIdrLong(),					InstructionORA()							],	// 07: ORA [dp]
 				[AddressingStackPush(cpu.Registers.P, true, true),	InstructionDummy(Instruction.PHP)					],	// 08: PHP S
 				[AddressingImmediateMemory(),				InstructionORA(true)							],	// 09: ORA #immM
-				[AddressingImplied(),					InstructionASLRegister()						],	// 0A: ASL A
+				[AddressingImplied(),					InstructionASLRegister(false)						],	// 0A: ASL A
 				[AddressingStackPush(cpu.Registers.D, false, false),	InstructionDummy(Instruction.PHD)					],	// 0B: PHD S
 				[AddressingAbsRmw(),					InstructionTSB()							],	// 0C: TSB abs
-				[AddressingAbs(),					InstructionORA()							],	// 0D: ORA abs
-				[AddressingAbsRmw(),					InstructionASLMemory()							],	// 0E: ASL abs
+				[AddressingAbsDbr(),					InstructionORA()							],	// 0D: ORA abs
+				[AddressingAbsRmw(),					InstructionASLMemory(false)						],	// 0E: ASL abs
 				[AddressingLong(),					InstructionORA()							],	// 0F: ORA long
 				[AddressingRel(),					InstructionBranch(Instruction.BPL, !cpu.Registers.GetStatusFlagN())	],	// 10: BPL rel
 				[AddressingDpIdrIdxY(false),				InstructionORA()							],	// 11: ORA (dp), Y
@@ -1287,7 +1430,7 @@ namespace Emulator{
 				[AddressingStackRelIdrIdxY(),				InstructionORA()							],	// 13: ORA (sr, S), Y
 				[AddressingDpRmw(),					InstructionTRB()							],	// 14: TRB dp
 				[AddressingDpIdxX(),					InstructionORA()							],	// 15: ORA dp, X
-				[AddressingDpIdxXRmw(),					InstructionASLMemory()							],	// 16: ASL dp, X
+				[AddressingDpIdxXRmw(),					InstructionASLMemory(false)						],	// 16: ASL dp, X
 				[AddressingDpIdrLongIdxY(),				InstructionORA()							],	// 17: ORA [dp], Y
 				[AddressingImplied(),					InstructionClearFlag(Instruction.CLC, 0x01)				],	// 18: CLC
 				[AddressingAbsIdxY(false),				InstructionORA()							],	// 19: ORA abs, Y
@@ -1295,8 +1438,24 @@ namespace Emulator{
 				[AddressingImplied(),					InstructionTxx(Instruction.TCS, cpu.Registers.GetRegisterA(true), 'S')	],	// 1B: TCS
 				[AddressingAbsRmw(),					InstructionTRB()							],	// 1C: TRB abs
 				[AddressingAbsIdxX(false),				InstructionORA()							],	// 1D: ORA abs, X
-				[AddressingAbsIdxXRmw(),				InstructionASLMemory()							],	// 1E: ASL abs, X
+				[AddressingAbsIdxXRmw(),				InstructionASLMemory(false)						],	// 1E: ASL abs, X
 				[AddressingLongIdxX(),					InstructionORA()							],	// 1F: ORA long, X
+				[AddressingAbsPbr(true),				InstructionJSR(Instruction.JSR, 0x00FFFF)				],	// 20: JSR abs
+				[AddressingDpIdxIdrX(),					InstructionAND()							],	// 21: AND (dp, X)
+				[AddressingLongJsl(),					InstructionJSR(Instruction.JSL, 0xFFFFFF)				],	// 22: JSL long
+				[AddressingStackRel(),					InstructionAND()							],	// 23: AND sr, S
+				[AddressingDp(),					InstructionBIT()							],	// 24: BIT dp
+				[AddressingDp(),					InstructionAND()							],	// 25: AND dp
+				[AddressingDpRmw(),					InstructionASLMemory(cpu.Registers.GetStatusFlagC())			],	// 26: ROL dp
+				[AddressingDpIdrLong(),					InstructionAND()							],	// 27: AND [dp]
+				[AddressingStackPull(true),				InstructionSetRegister(Instruction.PLP, 'P')				],	// 28: PLP S
+				[AddressingImmediateMemory(),				InstructionAND(true)							],	// 29: AND #immM
+				[AddressingImplied(),					InstructionASLRegister(cpu.Registers.GetStatusFlagC())			],	// 2A: ROL A
+				[AddressingStackPull(false),				InstructionSetRegister(Instruction.PLD, 'D')				],	// 2B: PLD S
+				[AddressingAbsDbr(),					InstructionBIT()							],	// 2C: BIT abs
+				[AddressingAbsDbr(),					InstructionAND()							],	// 2D: AND abs
+				[AddressingAbsRmw(),					InstructionASLMemory(cpu.Registers.GetStatusFlagC())			],	// 2E: ROL abs
+				[AddressingLong(),					InstructionAND()							],	// 2F: AND long
 			];
 
 			instructionFunction	= InstructionTable[opcode[0].Data];
@@ -1390,7 +1549,7 @@ namespace Emulator{
 					case 'A':	this.SetRegisterA(value);	break;
 					case 'X':	this.SetRegisterX(value);	break;
 					case 'Y':	this.SetRegisterY(value);	break;
-					case 'S':	this.S	= value;		break;
+					case 'S':	this.SetRegisterS(value);	break;
 					case 'PC':	this.PC	= value;		break;
 					case 'P':	this.SetStatusRegister(value);	break;
 					case 'D':	this.D	= value;		break;
@@ -1591,6 +1750,14 @@ namespace Emulator{
 			}
 			else{
 				this.Y	= Utility.Type.ToWord(value);
+			}
+		}
+		public SetRegisterS(value: number){
+			if(this.GetStatusFlagE()){
+				this.S	= Utility.Type.ToWord(0x0100 | (value & 0x00FF));
+			}
+			else{
+				this.S	= Utility.Type.ToWord(value);
 			}
 		}
 
@@ -2057,7 +2224,7 @@ namespace Emulator{
 			const strEffValM	= this.Registers.GetRegisterStringA(this.EffectiveValue);
 			const strLngAccess	= `$${strEffAddr} => $${strEffValM}`;
 			const strIndAccess	= `$${strIndAddr} > $${strEffAddr} => $${strEffValM}`;
-			const strOprRel		= Utility.Format.SignChar(this.Operand1) + this.Operand1.toString();
+			const strOprRel		= Utility.Format.SignChar(this.Operand1) + Math.abs(this.Operand1).toString();
 			const strRelDst		= Utility.Format.ToHexString(this.EffectiveAddress, 4);
 			const strXycDst		= '$' + strOpr1B + Utility.Format.ToHexString(this.Registers.Y, 4);
 			const strXycSrc		= '$' + strOpr2B + Utility.Format.ToHexString(this.Registers.X, 4);
@@ -3829,8 +3996,8 @@ namespace Application{
 			const initialRegisters	= new Emulator.Registers();
 			initialRegisters.SetStatusFlagE(statusFlagE);
 			cpu.ResetRegisters	= {
-				PB:	Utility.Type.ToByte(Main.AssembleStartAddress >> 16),
-				PC:	Utility.Type.ToWord(Main.AssembleStartAddress),
+			//	PB:	Utility.Type.ToByte(Main.AssembleStartAddress >> 16),
+			//	PC:	Utility.Type.ToWord(Main.AssembleStartAddress),
 				E:	(statusFlagE)? 1 : 0,
 			//	P:	0x14,	// TODO: Debug .longm
 			};
