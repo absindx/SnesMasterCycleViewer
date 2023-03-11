@@ -368,9 +368,11 @@ namespace Emulator{
 				return value;
 			}
 			function updateNZFlag(lengthFlag: boolean, value: number){
+				value		= Utility.Type.ToWord(value);
+				const valueMask	= (lengthFlag)? 0x00FF : 0xFFFF;
 				const msbMask	= (lengthFlag)? 0x0080 : 0x8000;
-				cpu.Registers.SetStatusFlagN((value & msbMask) !== 0);
-				cpu.Registers.SetStatusFlagZ(value === 0);
+				cpu.Registers.SetStatusFlagN((value & msbMask)   !== 0);
+				cpu.Registers.SetStatusFlagZ((value & valueMask) === 0);
 			}
 
 			// Addressing
@@ -457,10 +459,19 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			function *AddressingAbsIdxIdrXJump(){							// 02a: (abs, x) (JMP)
+			function *AddressingAbsIdxIdrX(pushPC: boolean){					// 02: (abs, x) (JMP, JSR)
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
 				yield;
+
+				if(pushPC){
+					const pushValue		= cpu.Registers.PC;
+					pushPushStack(pushValue >> 8);
+					yield;
+
+					pushPushStack(pushValue);
+					yield;
+				}
 
 				const operand1High		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1High[1]);
@@ -487,7 +498,6 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			// 02b: (abs, x) (JSR)
 			function *AddressingAbsIdrJump(lengthFlag: boolean){					// 03: (abs) (JML, JMP)
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
@@ -1046,7 +1056,28 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			// 17: dp, y
+			function *AddressingDpIdxY(){								// 17: dp, y
+				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
+				log.AccessLog.push(operand1Low[1]);
+				calculateInstructionLength();
+				yield;
+
+				if(!cpu.Registers.IsZeroDRegisterLow()){
+					pushDummyAccess(AccessType.Penalty);
+					yield;
+				}
+				pushDummyAccess(AccessType.ReadDummy);
+				yield;
+
+				const operand1			= operand1Low[0].Data;
+				const effectiveAddress		= cpu.Registers.ToDirectAddress(operand1 + cpu.Registers.GetRegisterY());
+
+				log.Addressing			= Addressing.DirectpageIndexedY;
+				log.Operand1			= operand1;
+				log.EffectiveAddress		= effectiveAddress;
+
+				yield* instructionFunction[1];
+			}
 			function *AddressingImmediate(addressing: Addressing, lengthFlag: boolean){		// 18: #imm
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
@@ -1132,9 +1163,9 @@ namespace Emulator{
 				pushDummyAccess(AccessType.ReadDummy);
 				yield;
 
-				const stackPointer	= cpu.Registers.S;
-				const stackLow		= pushPullStack();
-				let effectiveValue	= stackLow;
+				const stackPointer		= cpu.Registers.S;
+				const stackLow			= pushPullStack();
+				let effectiveVal	ue	= stackLow;
 				if(!lengthFlag){
 					yield;
 					const stackHigh	= pushPullStack();
@@ -1166,8 +1197,8 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			// 22d: S (PEA)
-			// 22e: S (PEI)
+														// 22d: S (PEA) (-> #imm word)
+														// 22e: S (PEI) (-> (dp))
 														// 22f: S (PER) (-> RelLong)
 			function *AddressingStackReturnInterrupt(){						// 22g: S (RTI)
 				calculateInstructionLength();
@@ -1316,7 +1347,7 @@ namespace Emulator{
 			// Instruction
 			//--------------------------------------------------
 			function *InstructionDummy(instruction: Instruction){
-				log.Instruction		= instruction;
+				log.Instruction			= instruction;
 			}
 
 			function *InstructionBlockMove(instruction: Instruction, direction: number){
@@ -1384,14 +1415,14 @@ namespace Emulator{
 				cpu.Registers.SetStatusFlagD(false);
 				cpu.Registers.SetStatusFlagI(true);
 
-				log.IndirectAddress	= fetchVector;
+				log.IndirectAddress		= fetchVector;
 			}
 			function *InstructionJump(instruction: Instruction, offset: number){
 				log.Instruction			= instruction;
 
 				const destinationBank		= log.EffectiveAddress & 0xFF0000;
 				const destinationPage		= Utility.Type.ToWord((log.EffectiveAddress & 0x00FFFF) + offset);
-				const destinationAddress	= (destinationBank << 16) | destinationPage;
+				const destinationAddress	= destinationBank | destinationPage;
 
 				cpu.Registers.SetFullProgramCounter(destinationAddress);
 				log.EffectiveValue		= destinationAddress;
@@ -1413,6 +1444,18 @@ namespace Emulator{
 				log.Instruction			= instruction;
 
 				cpu.Registers.SetRegisters({[destination]: log.EffectiveValue});
+			}
+			function *InstructionStore(value: number, lengthFlag: boolean){
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 0, value);
+				log.AccessLog.push(writeValueLow[1]);
+
+				if(!lengthFlag){
+					yield;
+					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 1, value >> 8);
+					log.AccessLog.push(writeValueHigh[1]);
+				}
+
+				log.EffectiveValue		= value;
 			}
 			function *InstructionTxx(instruction: Instruction, sourceValue: number, destination: string){
 				log.Instruction			= instruction;
@@ -1474,7 +1517,7 @@ namespace Emulator{
 						stepCarry	<<= 4;
 						stepAdd		<<= 4;
 					}
-					writeValue	|= carry;
+					writeValue		|= carry;
 				}
 
 				// update C flag
@@ -1491,8 +1534,8 @@ namespace Emulator{
 				cpu.Registers.SetRegisterA(writeValue);
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
 
-				log.Instruction		= Instruction.ADC;
-				log.EffectiveValue	= operand2;
+				log.Instruction			= Instruction.ADC;
+				log.EffectiveValue		= operand2;
 			}
 			function *InstructionAND(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1514,30 +1557,30 @@ namespace Emulator{
 					}
 				}
 
-				effectiveValue		&= readValue;
+				effectiveValue			&= readValue;
 				cpu.Registers.SetRegisterA(effectiveValue);
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
-				log.Instruction		= Instruction.AND;
-				log.EffectiveValue	= readValue;
+				log.Instruction			= Instruction.AND;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionASLRegister(carry: boolean){
-				const effectiveValue	= cpu.Registers.GetRegisterA();
-				const intCarry		= (carry)? 1 : 0;
-				let writeValue		= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
+				const effectiveValue		= cpu.Registers.GetRegisterA();
+				const intCarry			= (carry)? 1 : 0;
+				let writeValue			= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
 
 				cpu.Registers.SetRegisterA(writeValue);
 
-				log.Instruction		= Instruction.ASL;
+				log.Instruction			= Instruction.ASL;
 			}
 			function *InstructionASLMemory(carry: boolean){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				const intCarry		= (carry)? 1 : 0;
-				let writeValue		= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				const intCarry			= (carry)? 1 : 0;
+				let writeValue			= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
@@ -1547,71 +1590,100 @@ namespace Emulator{
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.ASL;
+				log.Instruction			= Instruction.ASL;
 			}
-			function *InstructionBIT(){
+			function *InstructionBIT(imm: boolean = false){
 				let readValue			= 0;
 
-				const readValueLow		= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
-				log.AccessLog.push(readValueLow[1]);
-				readValue			= readValueLow[0].Data;
+				if(imm){
+					readValue		= log.Operand1;
+				}
+				else{
+					const readValueLow		= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
+					log.AccessLog.push(readValueLow[1]);
+					readValue			= readValueLow[0].Data;
 
-				if(!cpu.Registers.GetStatusFlagM()){
-					yield;
-					const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
-					log.AccessLog.push(readValueHigh[1]);
-					readValue		|= (readValueHigh[0].Data << 8);
+					if(!cpu.Registers.GetStatusFlagM()){
+						yield;
+						const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
+						log.AccessLog.push(readValueHigh[1]);
+						readValue		|= (readValueHigh[0].Data << 8);
+					}
 				}
 
-				const result		= readValue & cpu.Registers.GetRegisterA();
+				const result			= readValue & cpu.Registers.GetRegisterA();
 
-				const nMask		= cpu.Registers.GetMsbMaskM();
-				const vMask		= nMask >> 1;
+				const nMask			= cpu.Registers.GetMsbMaskM();
+				const vMask			= nMask >> 1;
 
-				cpu.Registers.SetStatusFlagN((readValue & nMask) !== 0);
-				cpu.Registers.SetStatusFlagV((readValue & vMask) !== 0);
+				if(!imm){
+					cpu.Registers.SetStatusFlagN((readValue & nMask) !== 0);
+					cpu.Registers.SetStatusFlagV((readValue & vMask) !== 0);
+				}
 				cpu.Registers.SetStatusFlagZ(result === 0);
 
-				log.Instruction		= Instruction.BIT;
-				log.EffectiveValue	= readValue;
+				log.Instruction			= Instruction.BIT;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionBRK(){
-				log.Instruction		= Instruction.BRK;
+				log.Instruction			= Instruction.BRK;
 				yield* InstructionInterrupt(InterruptType.NativeBRK, InterruptType.EmulationIRQ);
 			}
+			function *InstructionBRL(){
+				pushDummyAccess(AccessType.ReadDummy);
+
+				const destinationAddress	= log.EffectiveAddress;
+				cpu.Registers.SetFullProgramCounter(destinationAddress);
+
+				log.Instruction			= Instruction.BRL;
+				log.EffectiveValue		= destinationAddress;
+			}
 			function *InstructionCOP(){
-				log.Instruction		= Instruction.COP;
+				log.Instruction			= Instruction.COP;
 				yield* InstructionInterrupt(InterruptType.NativeCOP, InterruptType.EmulationCOP);
 			}
 			function *InstructionDECRegister(){
-				const effectiveValue	= cpu.Registers.GetRegisterA();
-				let writeValue		= (effectiveValue - 1) & cpu.Registers.GetMaskM();
-				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
-				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
+				const effectiveValue		= cpu.Registers.GetRegisterA() - 1;
 
-				cpu.Registers.SetRegisterA(writeValue);
+				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
+				cpu.Registers.SetRegisterA(effectiveValue);
 
-				log.Instruction		= Instruction.DEC;
+				log.Instruction			= Instruction.DEC;
 			}
 			function *InstructionDECMemory(){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				let writeValue		= (effectiveValue - 1) & cpu.Registers.GetMaskM();
-				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
-				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				let writeValue			= (effectiveValue - 1) & cpu.Registers.GetMaskM();
+				updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
 
 				if(!cpu.Registers.GetStatusFlagM()){
 					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 1, writeValue >> 8);
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.DEC;
+				log.Instruction			= Instruction.DEC;
+			}
+			function *InstructionDEX(){
+				const effectiveValue		= cpu.Registers.GetRegisterX() - 1;
+
+				updateNZFlag(cpu.Registers.GetStatusFlagX(), effectiveValue);
+				cpu.Registers.SetRegisterX(effectiveValue);
+
+				log.Instruction			= Instruction.DEX;
+			}
+			function *InstructionDEY(){
+				const effectiveValue		= cpu.Registers.GetRegisterY() - 1;
+
+				updateNZFlag(cpu.Registers.GetStatusFlagX(), effectiveValue);
+				cpu.Registers.SetRegisterY(effectiveValue);
+
+				log.Instruction			= Instruction.DEY;
 			}
 			function *InstructionEOR(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1633,43 +1705,56 @@ namespace Emulator{
 					}
 				}
 
-				effectiveValue		^= readValue;
+				effectiveValue			^= readValue;
 				cpu.Registers.SetRegisterA(effectiveValue);
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
-				log.Instruction		= Instruction.EOR;
-				log.EffectiveValue	= readValue;
+				log.Instruction			= Instruction.EOR;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionINCRegister(){
-				const effectiveValue	= cpu.Registers.GetRegisterA();
-				let writeValue		= (effectiveValue + 1) & cpu.Registers.GetMaskM();
-				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
-				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
+				const effectiveValue		= cpu.Registers.GetRegisterA() + 1;
 
-				cpu.Registers.SetRegisterA(writeValue);
+				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
+				cpu.Registers.SetRegisterA(effectiveValue);
 
-				log.Instruction		= Instruction.INC;
+				log.Instruction			= Instruction.INC;
 			}
 			function *InstructionINCMemory(){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				let writeValue		= (effectiveValue + 1) & cpu.Registers.GetMaskM();
-				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
-				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				let writeValue			= (effectiveValue + 1) & cpu.Registers.GetMaskM();
+				updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
 
 				if(!cpu.Registers.GetStatusFlagM()){
 					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 1, writeValue >> 8);
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.INC;
+				log.Instruction			= Instruction.INC;
+			}
+			function *InstructionINX(){
+				const effectiveValue		= cpu.Registers.GetRegisterX() + 1;
+
+				updateNZFlag(cpu.Registers.GetStatusFlagX(), effectiveValue);
+				cpu.Registers.SetRegisterX(effectiveValue);
+
+				log.Instruction			= Instruction.INX;
+			}
+			function *InstructionINY(){
+				const effectiveValue		= cpu.Registers.GetRegisterY() + 1;
+
+				updateNZFlag(cpu.Registers.GetStatusFlagX(), effectiveValue);
+				cpu.Registers.SetRegisterY(effectiveValue);
+
+				log.Instruction			= Instruction.INY;
 			}
 			function *InstructionJSR(instruction: Instruction, fullAddress: boolean){
-				const jumpAddress	= log.Operand1;
-				const pushValue		= cpu.Registers.PC - 1;
+				const jumpAddress		= log.Operand1;
+				const pushValue			= cpu.Registers.PC - 1;
 
 				pushPushStack(pushValue >> 8);
 				yield;
@@ -1683,25 +1768,25 @@ namespace Emulator{
 					cpu.Registers.SetProgramCounter(jumpAddress);
 				}
 
-				log.Instruction		= instruction;
+				log.Instruction			= instruction;
 			}
 			function *InstructionLSRRegister(carry: boolean){
-				const effectiveValue	= cpu.Registers.GetRegisterA();
-				const intCarry		= (carry)? cpu.Registers.GetMsbMaskM() : 0;
-				let writeValue		= ((effectiveValue >> 1) | intCarry) & cpu.Registers.GetMaskM();
+				const effectiveValue		= cpu.Registers.GetRegisterA();
+				const intCarry			= (carry)? cpu.Registers.GetMsbMaskM() : 0;
+				let writeValue			= ((effectiveValue >> 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
 
 				cpu.Registers.SetRegisterA(writeValue);
 
-				log.Instruction		= Instruction.LSR;
+				log.Instruction			= Instruction.LSR;
 			}
 			function *InstructionLSRMemory(carry: boolean){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				const intCarry		= (carry)? cpu.Registers.GetMsbMaskM() : 0;
-				let writeValue		= ((effectiveValue >> 1) | intCarry) & cpu.Registers.GetMaskM();
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				const intCarry			= (carry)? cpu.Registers.GetMsbMaskM() : 0;
+				let writeValue			= ((effectiveValue >> 1) | intCarry) & cpu.Registers.GetMaskM();
 				cpu.Registers.SetStatusFlagN((writeValue     & cpu.Registers.GetMsbMaskM()) !== 0);
 				cpu.Registers.SetStatusFlagZ((writeValue                                  ) === 0);
 				cpu.Registers.SetStatusFlagC((effectiveValue & cpu.Registers.GetMsbMaskM()) !== 0);
@@ -1711,10 +1796,10 @@ namespace Emulator{
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.LSR;
+				log.Instruction			= Instruction.LSR;
 			}
 			function *InstructionORA(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1736,54 +1821,66 @@ namespace Emulator{
 					}
 				}
 
-				effectiveValue		|= readValue;
+				effectiveValue			|= readValue;
 				cpu.Registers.SetRegisterA(effectiveValue);
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
-				log.Instruction		= Instruction.ORA;
-				log.EffectiveValue	= readValue;
+				log.Instruction			= Instruction.ORA;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionPER(){
-				log.Instruction		= Instruction.PER;
+				log.Instruction			= Instruction.PER;
 
 				pushDummyAccess(AccessType.ReadDummy);
 				yield;
 
 				yield* InstructionPushValue(log.EffectiveAddress, false);
 			}
+			function *InstructionSTA(){
+				log.Instruction			= Instruction.STA;
+				yield* InstructionStore(cpu.Registers.GetRegisterA(), cpu.Registers.GetStatusFlagM());
+			}
+			function *InstructionSTX(){
+				log.Instruction			= Instruction.STX;
+				yield* InstructionStore(cpu.Registers.GetRegisterX(), cpu.Registers.GetStatusFlagX());
+			}
+			function *InstructionSTY(){
+				log.Instruction			= Instruction.STY;
+				yield* InstructionStore(cpu.Registers.GetRegisterY(), cpu.Registers.GetStatusFlagX());
+			}
 			function *InstructionTRB(){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				let writeValue		= cpu.Registers.GetRegisterA();
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				let writeValue			= cpu.Registers.GetRegisterA();
 				cpu.Registers.SetStatusFlagZ((writeValue & effectiveValue) === 0);
-				writeValue		= effectiveValue & Utility.Type.ToWord(~writeValue);
+				writeValue			= effectiveValue & Utility.Type.ToWord(~writeValue);
 
 				if(!cpu.Registers.GetStatusFlagM()){
 					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 1, writeValue >> 8);
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.TRB;
+				log.Instruction			= Instruction.TRB;
 			}
 			function *InstructionTSB(){
-				const effectiveAddress	= log.EffectiveAddress;
-				const effectiveValue	= log.EffectiveValue;
-				let writeValue		= cpu.Registers.GetRegisterA();
+				const effectiveAddress		= log.EffectiveAddress;
+				const effectiveValue		= log.EffectiveValue;
+				let writeValue			= cpu.Registers.GetRegisterA();
 				cpu.Registers.SetStatusFlagZ((writeValue & effectiveValue) === 0);
-				writeValue		|= effectiveValue;
+				writeValue			|= effectiveValue;
 
 				if(!cpu.Registers.GetStatusFlagM()){
 					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 1, writeValue >> 8);
 					log.AccessLog.push(writeValueHigh[1]);
 					yield;
 				}
-				const writeValueLow	= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction		= Instruction.TSB;
+				log.Instruction			= Instruction.TSB;
 			}
 			function *InstructionSTZ(){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1798,8 +1895,8 @@ namespace Emulator{
 					log.AccessLog.push(writeValueHigh[1]);
 				}
 
-				log.Instruction		= Instruction.STZ;
-				log.EffectiveValue	= 0;
+				log.Instruction			= Instruction.STZ;
+				log.EffectiveValue		= 0;
 			}
 
 			const regs	= cpu.Registers;
@@ -1930,10 +2027,42 @@ namespace Emulator{
 				[AddressingAbsIdxY(false),				InstructionADC()							],	// 79: ADC abs, Y
 				[AddressingStackPull(flagX),				InstructionSetRegister(Instruction.PLY, 'Y')				],	// 7A: PLY S
 				[AddressingImplied(),					InstructionTxx(Instruction.TDC, regs.D, 'C')				],	// 7B: TDC
-				[AddressingAbsIdxIdrXJump(),				InstructionJump(Instruction.JMP, 0)					],	// 7C: JMP (abs. X)
+				[AddressingAbsIdxIdrX(false),				InstructionJump(Instruction.JMP, 0)					],	// 7C: JMP (abs. X)
 				[AddressingAbsIdxX(false),				InstructionADC()							],	// 7D: ADC abs, X
 				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(regs.GetStatusFlagC())				],	// 7E: ROR abs, X
 				[AddressingLongIdxX(),					InstructionADC()							],	// 7F: ADC long, X
+				[AddressingRel(),					InstructionBranch(Instruction.BRA, true)				],	// 80: BRA rel
+				[AddressingDpIdxIdrX(),					InstructionSTA()							],	// 81: STA (dp, X)
+				[AddressingRelLong(),					InstructionBRL()							],	// 82: BRL rlong
+				[AddressingStackRel(),					InstructionSTA()							],	// 83: STA sr, S
+				[AddressingDp(),					InstructionSTY()							],	// 84: STY dp
+				[AddressingDp(),					InstructionSTA()							],	// 85: STA dp
+				[AddressingDp(),					InstructionSTX()							],	// 86: STX dp
+				[AddressingDpIdrLong(),					InstructionSTA()							],	// 87: STA [dp]
+				[AddressingImplied(false),				InstructionDEY()							],	// 88: DEY
+				[AddressingImmediateMemory(),				InstructionBIT(true)							],	// 89: BIT #immM
+				[AddressingImplied(),					InstructionTxx(Instruction.TXA, regs.GetRegisterX(), 'A')		],	// 8A: TXA
+				[AddressingStackPush(regs.PB, true),			InstructionDummy(Instruction.PHB)					],	// 8B: PHB S
+				[AddressingAbsDbr(),					InstructionSTY()							],	// 8C: STY abs
+				[AddressingAbsDbr(),					InstructionSTA()							],	// 8D: STA abs
+				[AddressingAbsDbr(),					InstructionSTX()							],	// 8E: STX abs
+				[AddressingAbsLong(),					InstructionSTA()							],	// 8F: STA long
+				[AddressingRel(),					InstructionBranch(Instruction.BCC, !regs.GetStatusFlagC())		],	// 90: BCC rel
+				[AddressingDpIdrIdxY(true),				InstructionSTA()							],	// 91: STA (dp), Y
+				[AddressingDpIdr(),					InstructionSTA()							],	// 92: STA (dp)
+				[AddressingStackRelIdrIdxY(),				InstructionSTA()							],	// 93: STA (sr, S), Y
+				[AddressingDpIdxX(),					InstructionSTY()							],	// 94: STY dp, X
+				[AddressingDpIdxX(),					InstructionSTA()							],	// 95: STA dp, X
+				[AddressingDpIdxX(),					InstructionSTX()							],	// 96: STX dp, X
+				[AddressingDpIdrLongIdxY(),				InstructionSTA()							],	// 97: STA [dp], Y
+				[AddressingImplied(),					InstructionTxx(Instruction.TYA, regs.GetRegisterY(), 'A')		],	// 98: TYA
+				[AddressingAbsIdxY(true),				InstructionSTA()							],	// 99: STA abs, Y
+				[AddressingImplied(),					InstructionTxx(Instruction.TXS, regs.GetRegisterX(), 'S')		],	// 9A: TXS
+				[AddressingImplied(),					InstructionTxx(Instruction.TXY, regs.GetRegisterX(), 'Y')		],	// 9B: TXY
+				[AddressingAbsDbr(),					InstructionSTZ()							],	// 9C: STZ abs
+				[AddressingAbsIdxX(true),				InstructionSTA()							],	// 9D: STA abs, X
+				[AddressingAbsIdxX(true),				InstructionSTZ()							],	// 9E: STZ abs, X
+				[AddressingLongIdxX(),					InstructionSTA()							],	// 9F: STA long, X
 			];
 
 			instructionFunction	= InstructionTable[opcode[0].Data];
