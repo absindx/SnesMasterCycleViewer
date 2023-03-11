@@ -1165,7 +1165,7 @@ namespace Emulator{
 
 				const stackPointer		= cpu.Registers.S;
 				const stackLow			= pushPullStack();
-				let effectiveVal	ue	= stackLow;
+				let effectiveValue		= stackLow;
 				if(!lengthFlag){
 					yield;
 					const stackHigh	= pushPullStack();
@@ -1426,6 +1426,31 @@ namespace Emulator{
 
 				cpu.Registers.SetFullProgramCounter(destinationAddress);
 				log.EffectiveValue		= destinationAddress;
+			}
+			function *InstructionLoad(instruction: Instruction, imm: boolean, lengthFlag: boolean, destination: string){
+				log.Instruction			= instruction;
+				let readValue			= 0;
+
+				if(imm){
+					readValue		= log.Operand1;
+				}
+				else{
+					const readValueLow		= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
+					log.AccessLog.push(readValueLow[1]);
+					readValue			= readValueLow[0].Data;
+
+					if(!cpu.Registers.GetStatusFlagM()){
+						yield;
+						const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
+						log.AccessLog.push(readValueHigh[1]);
+						readValue		|= (readValueHigh[0].Data << 8);
+					}
+				}
+
+				updateNZFlag(lengthFlag, readValue);
+				cpu.Registers.SetRegisters({[destination]: readValue});
+
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionPushValue(value: number, lengthFlag: boolean){
 				if(!lengthFlag){
@@ -1770,6 +1795,15 @@ namespace Emulator{
 
 				log.Instruction			= instruction;
 			}
+			function *InstructionLDA(imm: boolean = false){
+				yield* InstructionLoad(Instruction.LDA, imm, cpu.Registers.GetStatusFlagM(), 'A');
+			}
+			function *InstructionLDX(imm: boolean = false){
+				yield* InstructionLoad(Instruction.LDX, imm, cpu.Registers.GetStatusFlagX(), 'X');
+			}
+			function *InstructionLDY(imm: boolean = false){
+				yield* InstructionLoad(Instruction.LDY, imm, cpu.Registers.GetStatusFlagX(), 'Y');
+			}
 			function *InstructionLSRRegister(carry: boolean){
 				const effectiveValue		= cpu.Registers.GetRegisterA();
 				const intCarry			= (carry)? cpu.Registers.GetMsbMaskM() : 0;
@@ -2039,7 +2073,7 @@ namespace Emulator{
 				[AddressingDp(),					InstructionSTA()							],	// 85: STA dp
 				[AddressingDp(),					InstructionSTX()							],	// 86: STX dp
 				[AddressingDpIdrLong(),					InstructionSTA()							],	// 87: STA [dp]
-				[AddressingImplied(false),				InstructionDEY()							],	// 88: DEY
+				[AddressingImplied(),					InstructionDEY()							],	// 88: DEY
 				[AddressingImmediateMemory(),				InstructionBIT(true)							],	// 89: BIT #immM
 				[AddressingImplied(),					InstructionTxx(Instruction.TXA, regs.GetRegisterX(), 'A')		],	// 8A: TXA
 				[AddressingStackPush(regs.PB, true),			InstructionDummy(Instruction.PHB)					],	// 8B: PHB S
@@ -2063,6 +2097,38 @@ namespace Emulator{
 				[AddressingAbsIdxX(true),				InstructionSTA()							],	// 9D: STA abs, X
 				[AddressingAbsIdxX(true),				InstructionSTZ()							],	// 9E: STZ abs, X
 				[AddressingLongIdxX(),					InstructionSTA()							],	// 9F: STA long, X
+				[AddressingImmediateIndex(),				InstructionLDY(true)							],	// A0: LDY #immX
+				[AddressingDpIdxIdrX(),					InstructionLDA()							],	// A1: LDA (dp, X)
+				[AddressingImmediateIndex(),				InstructionLDX(true)							],	// A2: LDX #immX
+				[AddressingStackRel(),					InstructionLDA()							],	// A3: LDA sr, S
+				[AddressingDp(),					InstructionLDY()							],	// A4: LDY dp
+				[AddressingDp(),					InstructionLDA()							],	// A5: LDA dp
+				[AddressingDp(),					InstructionLDX()							],	// A6: LDX dp
+				[AddressingDpIdrLong(),					InstructionLDA()							],	// A7: LDA [dp]
+				[AddressingImplied(),					InstructionTxx(Instruction.TAY, regs.GetRegisterA(), 'Y')		],	// A8: TAY
+				[AddressingImmediateMemory(),				InstructionLDA(true)							],	// A9: LDA #immM
+				[AddressingImplied(),					InstructionTxx(Instruction.TAX, regs.GetRegisterA(), 'X')		],	// AA: TAX
+				[AddressingStackPull(true),				InstructionSetRegister(Instruction.PLB, 'PB')				],	// AB: PLB S
+				[AddressingAbsDbr(),					InstructionLDY()							],	// AC: LDY abs
+				[AddressingAbsDbr(),					InstructionLDA()							],	// AD: LDA abs
+				[AddressingAbsDbr(),					InstructionLDX()							],	// AE: LDX abs
+				[AddressingAbsLong(),					InstructionLDA()							],	// AF: LDA long
+				[AddressingRel(),					InstructionBranch(Instruction.BCS, regs.GetStatusFlagC())		],	// B0: BCS rel
+				[AddressingDpIdrIdxY(false),				InstructionLDA()							],	// B1: LDA (dp), Y
+				[AddressingDpIdr(),					InstructionLDA()							],	// B2: LDA (dp)
+				[AddressingStackRelIdrIdxY(),				InstructionLDA()							],	// B3: LDA (sr, S), Y
+				[AddressingDpIdxX(),					InstructionSTY()							],	// B4: LDY dp, X
+				[AddressingDpIdxX(),					InstructionLDA()							],	// B5: LDA dp, X
+				[AddressingDpIdxY(),					InstructionLDX()							],	// B6: LDX dp, Y
+				[AddressingDpIdrLongIdxY(),				InstructionLDA()							],	// B7: LDA [dp], Y
+				[AddressingImplied(),					InstructionClearFlag(Instruction.CLV, 0x40 /* nVmxdizc */)		],	// B8: CLV
+				[AddressingAbsIdxY(false),				InstructionLDA()							],	// B9: LDA abs, Y
+				[AddressingImplied(),					InstructionTxx(Instruction.TSX, regs.S, 'X')				],	// BA: TSX
+				[AddressingImplied(),					InstructionTxx(Instruction.TXY, regs.GetRegisterY(), 'X')		],	// BB: TYX
+				[AddressingAbsDbr(),					InstructionLDY()							],	// BC: LDY abs, X
+				[AddressingAbsIdxX(false),				InstructionLDA()							],	// BD: LDA abs, X
+				[AddressingAbsIdxY(false),				InstructionLDX()							],	// BE: LDX abs, Y
+				[AddressingLongIdxX(),					InstructionLDA()							],	// BF: LDA long, X
 			];
 
 			instructionFunction	= InstructionTable[opcode[0].Data];
