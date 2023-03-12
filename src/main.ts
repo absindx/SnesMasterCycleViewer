@@ -201,7 +201,6 @@ namespace Utility{
 namespace Emulator{
 	export class Cpu{
 		public Registers: Registers		= new Registers();
-		//private Memory: Memory		= new Memory();
 		public MasterCycleCounter: number	= 0;
 		public CpuCycleCounter: number		= 0;
 		public Logs: StepLog[]			= [];
@@ -209,6 +208,7 @@ namespace Emulator{
 		public CpuHalted			= false;
 		private CpuSlept			= false;
 
+		private PendingBoot: boolean		= true;
 		private PendingRst: boolean		= true;
 		private PendingAbt: boolean		= false;
 		private PendingNmi: boolean		= false;
@@ -226,6 +226,7 @@ namespace Emulator{
 
 		public Boot(){
 			this.Registers			= new Registers();
+			this.PendingBoot		= true;
 			this.PendingRst			= true;
 		}
 		public RST(){
@@ -243,8 +244,10 @@ namespace Emulator{
 
 		public Clock(){
 			if(this.PendingRst){
+				this.PushResetEvent(this.PendingBoot);
 				this.JumpInterruptHandler(InterruptType.EmulationRST);
 				this.Reset();	// to override the program counter
+				this.PendingBoot	= false;
 				this.PendingRst		= false;
 			}
 			if(this.CpuHalted){
@@ -252,6 +255,10 @@ namespace Emulator{
 			}
 
 			// TODO: Implement interrupts
+
+			if(this.CpuSlept){
+				return;
+			}
 
 			// Get next instruction
 			if(this.yieldFunction === null){
@@ -287,6 +294,35 @@ namespace Emulator{
 
 			if(this.ResetRegisters !== null){
 				this.Registers.SetRegisters(this.ResetRegisters);
+			}
+		}
+		private PushResetEvent(boot: boolean){
+			const cpu	= this;
+			const sp	= cpu.Registers.S;
+
+			if(boot){
+				cpu.Registers.SetRegisterS(cpu.Registers.S + 3);
+			}
+
+			function pushStack(value: number){
+				value		= Utility.Type.ToByte(value);
+				const address	= cpu.Registers.S;
+				const result	= cpu.WriteDataByte(AccessType.PushStack, address, value);
+				cpu.Registers.SetRegisterS(cpu.Registers.S - 1);
+			}
+
+			pushStack(cpu.Registers.PB);
+			pushStack(cpu.Registers.PC >> 8);
+			pushStack(cpu.Registers.PC);
+			pushStack(cpu.Registers.P);
+
+			if(boot){
+				// Boot: $01FD
+				cpu.Registers.SetRegisterS(sp);
+			}
+			else{
+				// RST: SP - 3
+				cpu.Registers.SetRegisterS(sp + 1);
 			}
 		}
 
@@ -521,7 +557,7 @@ namespace Emulator{
 				log.AccessLog.push(effectiveAddressHigh[1]);
 
 				let effectiveAddress;
-				if(lengthFlag){
+				if(!lengthFlag){
 					yield;
 					const effectiveAddressBank	= cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 2);
 					log.AccessLog.push(effectiveAddressBank[1]);
@@ -1153,7 +1189,8 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			// 22a: S (ABORT, IRQ, NMI, RES)
+														// 22a: S (ABORT, IRQ, NMI, RES)
+														// TODO: Implements
 			function *AddressingStackPull(lengthFlag: boolean){					// 22b: S (PLA, PLB, PLD, PLP, PLX, PLY)
 				calculateInstructionLength();
 
@@ -1221,9 +1258,7 @@ namespace Emulator{
 					stackPCBank		= pushPullStack();
 				}
 
-				cpu.Registers.SetRegisters({
-					P:	stackStatus,
-				});
+				cpu.Registers.SetRegisterP(stackStatus);
 				let effectiveAddress		= (stackPCBank << 16) | (stackPCHigh << 8) | stackPCLow;
 
 				log.Addressing			= Addressing.Stack;
@@ -1392,6 +1427,15 @@ namespace Emulator{
 
 				cpu.Registers.SetFullProgramCounter(destinationAddress);
 				log.EffectiveValue		= destinationAddress;
+			}
+			function *InstructionCompare(instruction: Instruction, operand1: number, operand2: number, lengthFlag: boolean){
+				log.Instruction			= instruction;
+
+				let result			= operand1 - operand2;
+
+				const cFlag			= result >= 0;
+				cpu.Registers.SetStatusFlagC(cFlag);
+				updateNZFlag(lengthFlag, result);
 			}
 			function *InstructionClearFlag(instruction: Instruction, mask: number){
 				log.Instruction			= instruction;
@@ -1666,6 +1710,21 @@ namespace Emulator{
 				log.Instruction			= Instruction.BRL;
 				log.EffectiveValue		= destinationAddress;
 			}
+			function *InstructionCMP(imm: boolean = false){
+				const operand1	= cpu.Registers.GetRegisterA();
+				const operand2	= (imm)? log.Operand1 : log.EffectiveValue;
+				yield* InstructionCompare(Instruction.CMP, operand1, operand2, cpu.Registers.GetStatusFlagM());
+			}
+			function *InstructionCPX(imm: boolean = false){
+				const operand1	= cpu.Registers.GetRegisterX();
+				const operand2	= (imm)? log.Operand1 : log.EffectiveValue;
+				yield* InstructionCompare(Instruction.CPX, operand1, operand2, cpu.Registers.GetStatusFlagX());
+			}
+			function *InstructionCPY(imm: boolean = false){
+				const operand1	= cpu.Registers.GetRegisterY();
+				const operand2	= (imm)? log.Operand1 : log.EffectiveValue;
+				yield* InstructionCompare(Instruction.CPY, operand1, operand2, cpu.Registers.GetStatusFlagX());
+			}
 			function *InstructionCOP(){
 				log.Instruction			= Instruction.COP;
 				yield* InstructionInterrupt(InterruptType.NativeCOP, InterruptType.EmulationCOP);
@@ -1862,6 +1921,12 @@ namespace Emulator{
 				log.Instruction			= Instruction.ORA;
 				log.EffectiveValue		= readValue;
 			}
+			function *InstructionPEI(){
+				log.Instruction			= Instruction.PEI;
+				log.EffectiveValue		= log.IndirectAddress;
+
+				yield* InstructionPushValue(log.EffectiveAddress, false);
+			}
 			function *InstructionPER(){
 				log.Instruction			= Instruction.PER;
 
@@ -1870,9 +1935,31 @@ namespace Emulator{
 
 				yield* InstructionPushValue(log.EffectiveAddress, false);
 			}
+			function *InstructionREP(){
+				log.Instruction			= Instruction.REP;
+
+				yield;
+				pushDummyAccess(AccessType.ReadDummy);
+
+				const writeValue		= cpu.Registers.P & Utility.Type.ToByte(~log.Operand1);
+				cpu.Registers.SetRegisterP(writeValue);
+			}
+			function *InstructionSEP(){
+				log.Instruction			= Instruction.SEP;
+
+				yield;
+				pushDummyAccess(AccessType.ReadDummy);
+
+				const writeValue		= cpu.Registers.P | log.Operand1;
+				cpu.Registers.SetRegisterP(writeValue);
+			}
 			function *InstructionSTA(){
 				log.Instruction			= Instruction.STA;
 				yield* InstructionStore(cpu.Registers.GetRegisterA(), cpu.Registers.GetStatusFlagM());
+			}
+			function *InstructionSTP(){
+				log.Instruction			= Instruction.STP;
+				cpu.CpuHalted			= true;
 			}
 			function *InstructionSTX(){
 				log.Instruction			= Instruction.STX;
@@ -1881,6 +1968,22 @@ namespace Emulator{
 			function *InstructionSTY(){
 				log.Instruction			= Instruction.STY;
 				yield* InstructionStore(cpu.Registers.GetRegisterY(), cpu.Registers.GetStatusFlagX());
+			}
+			function *InstructionSTZ(){
+				let effectiveValue		= cpu.Registers.GetRegisterA();
+				let readValue			= 0;
+
+				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 0, 0);
+				log.AccessLog.push(writeValueLow[1]);
+
+				if(!cpu.Registers.GetStatusFlagM()){
+					yield;
+					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 1, 0);
+					log.AccessLog.push(writeValueHigh[1]);
+				}
+
+				log.Instruction			= Instruction.STZ;
+				log.EffectiveValue		= 0;
 			}
 			function *InstructionTRB(){
 				const effectiveAddress		= log.EffectiveAddress;
@@ -1916,21 +2019,9 @@ namespace Emulator{
 
 				log.Instruction			= Instruction.TSB;
 			}
-			function *InstructionSTZ(){
-				let effectiveValue		= cpu.Registers.GetRegisterA();
-				let readValue			= 0;
-
-				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 0, 0);
-				log.AccessLog.push(writeValueLow[1]);
-
-				if(!cpu.Registers.GetStatusFlagM()){
-					yield;
-					const writeValueHigh	= cpu.WriteDataByte(AccessType.Write, log.EffectiveAddress + 1, 0);
-					log.AccessLog.push(writeValueHigh[1]);
-				}
-
-				log.Instruction			= Instruction.STZ;
-				log.EffectiveValue		= 0;
+			function *InstructionWAI(){
+				log.Instruction			= Instruction.WAI;
+				cpu.CpuSlept			= true;
 			}
 
 			const regs	= cpu.Registers;
@@ -2129,6 +2220,38 @@ namespace Emulator{
 				[AddressingAbsIdxX(false),				InstructionLDA()							],	// BD: LDA abs, X
 				[AddressingAbsIdxY(false),				InstructionLDX()							],	// BE: LDX abs, Y
 				[AddressingLongIdxX(),					InstructionLDA()							],	// BF: LDA long, X
+				[AddressingImmediateIndex(),				InstructionCPY(true)							],	// C0: CPY #immX
+				[AddressingDpIdxIdrX(),					InstructionCMP()							],	// C1: CMP (dp, X)
+				[AddressingImmediateImm8(),				InstructionREP()							],	// C2: REP #imm8
+				[AddressingStackRel(),					InstructionCMP()							],	// C3: CMP sr, S
+				[AddressingDp(),					InstructionCPY()							],	// C4: CPY dp
+				[AddressingDp(),					InstructionCMP()							],	// C5: CMP dp
+				[AddressingDpRmw(),					InstructionDECMemory()							],	// C6: DEC dp
+				[AddressingDpIdrLong(),					InstructionCMP()							],	// C7: CMP [dp]
+				[AddressingImplied(),					InstructionINY()							],	// C8: INY
+				[AddressingImmediateMemory(),				InstructionCMP(true)							],	// C9: CMP #immM
+				[AddressingImplied(),					InstructionDEX()							],	// CA: DEX
+				[AddressingStackPull(true),				InstructionWAI()							],	// CB: WAI
+				[AddressingAbsDbr(),					InstructionCPY()							],	// CC: CPY abs
+				[AddressingAbsDbr(),					InstructionCMP()							],	// CD: CMP abs
+				[AddressingAbsRmw(),					InstructionDECMemory()							],	// CE: DEC abs
+				[AddressingAbsLong(),					InstructionCMP()							],	// CF: CMP long
+				[AddressingRel(),					InstructionBranch(Instruction.BNE, !regs.GetStatusFlagZ())		],	// D0: BNE rel
+				[AddressingDpIdrIdxY(false),				InstructionCMP()							],	// D1: CMP (dp), Y
+				[AddressingDpIdr(),					InstructionCMP()							],	// D2: CMP (dp)
+				[AddressingStackRelIdrIdxY(),				InstructionCMP()							],	// D3: CMP (sr, S), Y
+				[AddressingDpIdr(),					InstructionPEI()							],	// D4: PEI (dp)
+				[AddressingDpIdxX(),					InstructionCMP()							],	// D5: CMP dp, X
+				[AddressingDpIdxY(),					InstructionDECMemory()							],	// D6: DEC dp, Y
+				[AddressingDpIdrLongIdxY(),				InstructionCMP()							],	// D7: CMP [dp], Y
+				[AddressingImplied(),					InstructionClearFlag(Instruction.CLD, 0x08 /* nvmxDizc */)		],	// D8: CLD
+				[AddressingAbsIdxY(false),				InstructionCMP()							],	// D9: CMP abs, Y
+				[AddressingStackPush(regs.GetRegisterX(), flagX),	InstructionDummy(Instruction.PHX)					],	// DA: PHX
+				[AddressingImplied(),					InstructionSTP()							],	// DB: STP
+				[AddressingAbsIdrJump(false),				InstructionJump(Instruction.JMP, 0)					],	// DC: JML [abs]
+				[AddressingAbsIdxX(false),				InstructionCMP()							],	// DD: CMP abs, X
+				[AddressingAbsIdxX(false),				InstructionDECMemory()							],	// DE: DEC abs, X
+				[AddressingLongIdxX(),					InstructionCMP()							],	// DF: CMP long, X
 			];
 
 			instructionFunction	= InstructionTable[opcode[0].Data];
@@ -2205,14 +2328,13 @@ namespace Emulator{
 		A: number	= 0;
 		X: number	= 0;
 		Y: number	= 0;
-		S: number	= 0x01FF;
+		S: number	= 0x01FD;
 		PC: number	= 0;
 		P: number	= 0x34;	// nvRBdIzc
 		D: number	= 0;
 		PB: number	= 0;
 		DB: number	= 0;
 		E: boolean	= true;
-		MDR: number	= 0;
 
 		public SetRegisters(dict: {[register: string]: number}){
 			if(dict['E'] !== undefined){
@@ -2249,7 +2371,6 @@ namespace Emulator{
 			clone.PB	= this.PB;
 			clone.DB	= this.DB;
 			clone.E		= this.E;
-			clone.MDR	= this.MDR;
 
 			return clone;
 		}
@@ -4693,8 +4814,8 @@ namespace Application{
 
 			// TODO: Debug
 			let stepCounter	= 0;
-			// while(!cpu.CpuHalted && (cpu.CycleCounter < maxCycle)){
-			while(!cpu.CpuHalted && (cpu.MasterCycleCounter < maxCycle) && ((cpu.Logs.length <= 0) || (cpu.Logs[cpu.Logs.length - 1].Instruction !== Emulator.Instruction.BRK))){
+			// while(!cpu.CpuHalted && (cpu.CycleCounter < maxCycle) && (stepCounter < maxCycle)){
+			while(!cpu.CpuHalted && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle) && ((cpu.Logs.length <= 0) || (cpu.Logs[cpu.Logs.length - 1].Instruction !== Emulator.Instruction.BRK))){
 				cpu.Step();
 				stepCounter++;
 			}
