@@ -3724,16 +3724,16 @@ namespace Assembler{
 						break;
 					}
 					case CodeTokenType.DirectiveDataByte:		// ".db"
-						this.NowAddress	+= this.GetDataBytes(token, 1).length;
+						this.NowAddress	+= this.GetDataBytes(token, 1, false, pushError).length;
 						break;
 					case CodeTokenType.DirectiveDataWord:		// ".dw"
-						this.NowAddress	+= this.GetDataBytes(token, 2).length;
+						this.NowAddress	+= this.GetDataBytes(token, 2, false, pushError).length;
 						break;
 					case CodeTokenType.DirectiveDataLong:		// ".dl"
-						this.NowAddress	+= this.GetDataBytes(token, 3).length;
+						this.NowAddress	+= this.GetDataBytes(token, 3, false, pushError).length;
 						break;
 					case CodeTokenType.DirectiveDataDouble:		// ".dd"
-						this.NowAddress	+= this.GetDataBytes(token, 4).length;
+						this.NowAddress	+= this.GetDataBytes(token, 4, false, pushError).length;
 						break;
 					case CodeTokenType.DirectiveMemoryShort:	// ".m8"
 						this.NowMemoryLength	= true;
@@ -4008,22 +4008,22 @@ namespace Assembler{
 						break;
 					}
 					case CodeTokenType.DirectiveDataByte: {		// ".db"
-						const data	= this.GetDataBytes(token, 1);
+						const data	= this.GetDataBytes(token, 1, true, pushError);
 						chunk.Data	= chunk.Data.concat(data);
 						break;
 					}
 					case CodeTokenType.DirectiveDataWord: {		// ".dw"
-						const data	= this.GetDataBytes(token, 2);
+						const data	= this.GetDataBytes(token, 2, true, pushError);
 						chunk.Data	= chunk.Data.concat(data);
 						break;
 					}
 					case CodeTokenType.DirectiveDataLong: {		// ".dl"
-						const data	= this.GetDataBytes(token, 3);
+						const data	= this.GetDataBytes(token, 3, true, pushError);
 						chunk.Data	= chunk.Data.concat(data);
 						break;
 					}
 					case CodeTokenType.DirectiveDataDouble: {	// ".dd"
-						const data	= this.GetDataBytes(token, 4);
+						const data	= this.GetDataBytes(token, 4, true, pushError);
 						chunk.Data	= chunk.Data.concat(data);
 						break;
 					}
@@ -4322,6 +4322,7 @@ namespace Assembler{
 			}
 
 			// check depth
+			depth++;
 			if(depth > 100){
 				return [null, 'The definition is too deep.'];
 			}
@@ -4329,8 +4330,8 @@ namespace Assembler{
 			// define
 			if(this.DefineList[name]){
 				const valueString	= this.DefineList[name].Value;
-				const [value, message]	= this.ResolveValue(valueString, depth + 1);
-				if(value !== null){
+				const [value, message]	= this.ResolveValue(valueString, depth);
+				if((value !== null) && (value !== InvalidAddress)){
 					return [value, 'define']
 				}
 				else{
@@ -4351,7 +4352,7 @@ namespace Assembler{
 			// minus label
 			if(name === '-'){
 				for(let i = this.MinusLabelList.length - 1; i >= 0; i--){
-					if(this.MinusLabelList[i] < this.NowAddress){
+					if(this.MinusLabelList[i] <= this.NowAddress){
 						return [this.MinusLabelList[i], 'minus label'];
 					}
 				}
@@ -4369,12 +4370,12 @@ namespace Assembler{
 					return [null, 'Invalid operator.'];
 				}
 
-				const [leftValue, leftMessage]		= this.ResolveValue(leftString);
-				const [rightValue, rightMessage]	= this.ResolveValue(rightString);
-				if(leftValue === null){
+				const [leftValue, leftMessage]		= this.ResolveValue(leftString, depth);
+				const [rightValue, rightMessage]	= this.ResolveValue(rightString, depth);
+				if((leftValue === null) || (leftValue === InvalidAddress)){
 					return [null, leftMessage];
 				}
-				if(rightValue === null){
+				if((rightValue === null) || (rightValue === InvalidAddress)){
 					return [null, rightMessage];
 				}
 				return [operatorFunction(leftValue, rightValue), 'expression'];
@@ -4388,7 +4389,10 @@ namespace Assembler{
 				}
 				const label	= scope.LocalScope[name];
 				if(!label){
-					return [null, 'Local label resolution failed.'];
+					return [null, `Failed to resolve local label "${name}".`];
+				}
+				if(label.Address === InvalidAddress){
+					return [null, 'Invalid address local label.'];
 				}
 				return [label.Address, 'local label'];
 			}
@@ -4396,6 +4400,9 @@ namespace Assembler{
 			// global label
 			if(this.LabelList[name]){
 				const label	= this.LabelList[name];
+				if(label.Address === InvalidAddress){
+					return [null, 'Invalid address global label.'];
+				}
 				return [label.Address, 'global label'];
 			}
 
@@ -4410,7 +4417,7 @@ namespace Assembler{
 			return [null, `Failed to resolve "${name}".`];
 		}
 
-		private GetDataBytes(token: Token, baseSize: number): number[]{
+		private GetDataBytes(token: Token, baseSize: number, strict: boolean, pushError: (message: string) => void): number[]{
 			const data: number[]	= [];
 
 			const pushValue	= (value: number) => {
@@ -4438,6 +4445,9 @@ namespace Assembler{
 					else{
 						const [resolved, message]	= this.ResolveValue(option);
 						pushValue((resolved !== null)? resolved : 0);
+						if(!resolved && strict){
+							pushError(message);
+						}
 					}
 				}
 				else{
@@ -4710,20 +4720,21 @@ namespace Assembler{
 		Long,
 	}
 
+	const InvalidAddress	= 0xFFFFFFFF;
 	class ScopeItem{
-		Address: number	= 0;
+		Address: number	= InvalidAddress;
 		LocalScope: { [LocalLabel: string]: LocalScopeItem}	= {};
 	}
 	class LocalScopeItem{
-		Address: number	= 0;
+		Address: number	= InvalidAddress;
 	}
 
 	class DefineItem{
-		Value: number | string	= 0;
+		Value: number | string	= InvalidAddress;
 	}
 
 	export class DataChunk{
-		Address: number	= 0;
+		Address: number	= InvalidAddress;
 		Data: number[]	= [];
 	}
 
