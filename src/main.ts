@@ -267,7 +267,10 @@ namespace Emulator{
 			const execute	= this.yieldFunction.next();
 			if(execute.done){
 				this.yieldFunction	= null;
+				this.Memory.CpuStepIO();
 			}
+
+			this.Memory.ClockIO();
 		}
 		public Step(){
 			do{
@@ -585,7 +588,7 @@ namespace Emulator{
 				yield;
 
 				const operand1Bank		= cpu.FetchProgramByte(AccessType.FetchOperand);
-				log.AccessLog.push(operand1High[1]);
+				log.AccessLog.push(operand1Bank[1]);
 				calculateInstructionLength();
 				yield;
 
@@ -639,11 +642,13 @@ namespace Emulator{
 				calculateInstructionLength();
 				yield;
 
-				const operand1			= (operand1Bank[0].Data << 16) | (operand1High[0].Data << 8) | (operand1Low[0].Data);
+				const effectiveAddressPage	= (operand1High[0].Data << 8) | (operand1Low[0].Data);
+				const operand1			= (operand1Bank[0].Data << 16) | effectiveAddressPage;
+				const effectiveAddress		= (operand1Bank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage + cpu.Registers.GetRegisterX());
 
 				log.Addressing			= Addressing.AbsoluteLongIndexedX;
 				log.Operand1			= operand1;
-				log.EffectiveAddress		= operand1;
+				log.EffectiveAddress		= effectiveAddress;
 
 				yield* instructionFunction[1];
 			}
@@ -986,7 +991,8 @@ namespace Emulator{
 				yield;
 				const effectiveAddressBank	= cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 2);
 				log.AccessLog.push(effectiveAddressBank[1]);
-				const effectiveAddress		= (effectiveAddressBank[0].Data << 16) | (effectiveAddressHigh[0].Data << 8) | effectiveAddressLow[0].Data;
+				const effectiveAddressPage	= ((effectiveAddressHigh[0].Data << 8) | effectiveAddressLow[0].Data) + cpu.Registers.GetRegisterY();
+				const effectiveAddress		= (effectiveAddressBank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage);
 				yield;
 
 				log.Addressing			= Addressing.DirectpageIndirectLongIndexedY;
@@ -2769,19 +2775,30 @@ namespace Emulator{
 		ROMMapping: ROMMapping	= ROMMapping.LoROM;
 		IsFastROM: boolean	= false;
 
+		CpuRegister: CpuRegister	= new CpuRegister();
+		PpuRegister: PpuRegister	= new PpuRegister();
+		DmaChannels: DmaChannel[]	= [];
+
 		AddressBus: number	= 0;
 		DataBus: number		= 0;
+		Mode7Latch: number	= 0;
+		Ppu1Bus: number		= 0;
+		Ppu2Bus: number		= 0;
+
+		constructor(){
+			for(let i = 0; i < 8; i++){
+				this.DmaChannels[i]	= new DmaChannel();
+			}
+		}
 
 		public ReadByte(address: number): MemoryReadResult{
 			const [region, realAddress]	= this.ToRealAddress(address);
-			let data			= this.HookIORead(realAddress);
-			if(data === null){
-				if(region !== AccessRegion.OpenBus){
-					data		= this.AddressSpace[realAddress] ?? 0;
-				}
-				else{
-					data		= this.DataBus;
-				}
+			const [dataIO, maskIO]		= this.HookIORead(realAddress);
+			let data			= (this.DataBus & (~maskIO)) | (dataIO & maskIO);
+
+			const enableRegion		= (region !== AccessRegion.OpenBus) && (region !== AccessRegion.IO);
+			if(enableRegion){
+				data		= this.AddressSpace[realAddress] ?? 0;
 			}
 			data	= Utility.Type.ToByte(data);
 
@@ -2796,8 +2813,9 @@ namespace Emulator{
 
 		public WriteByte(address: number, data: number, romWrite: boolean = false): MemoryWriteResult{
 			const [region, realAddress]	= this.ToRealAddress(address);
-			if(!this.HookIOWrite(realAddress)){
-				if((region !== AccessRegion.ROM) || romWrite){
+			if(!this.HookIOWrite(realAddress, data)){
+				const enableRegion	= (region !== AccessRegion.ROM) && (region !== AccessRegion.OpenBus) && (region !== AccessRegion.IO);
+				if(enableRegion || romWrite){
 					this.AddressSpace[realAddress]	= Utility.Type.ToByte(data);
 				}
 			}
@@ -2872,22 +2890,52 @@ namespace Emulator{
 			return [AccessRegion.ROM, address];
 		}
 
-		private HookIORead(address: number): number | null{
+		private HookIORead(address: number): [number, number]{
 			switch(address){
-				case 0x002100:
-					// TODO: Implements
-					break;
+				case 0x002134:	// MPYL
+					return [this.PpuRegister.MPYL, 0xFF];
+				case 0x002135:	// MPYM
+					return [this.PpuRegister.MPYM, 0xFF];
+				case 0x002136:	// MPYH
+					return [this.PpuRegister.MPYH, 0xFF];
 			}
-			return null;
+			if((address & 0xFFFF80) == 0x004300){
+				const dmaChannel	= (address >> 4) & 0x07;
+				const registerNumber	= address & 0x0F;
+				const registerValue	= this.DmaChannels[dmaChannel].ReadRegister(registerNumber);
+				if(registerValue !== null){
+					return [registerValue, 0xFF];
+				}
+			}
+			return [0, 0];
 		}
 		/**
 		 * @returns memory hooked (true = I/O / false = memory)
 		 */
-		private HookIOWrite(address: number): boolean{
+		private HookIOWrite(address: number, data: number): boolean{
 			switch(address){
-				case 0x002100:
-					// TODO: Implements
+				case 0x00211B:	// M7A
+					// DDDDDDDD dddddddd
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7A	= this.Mode7Latch;
+					this.PpuRegister.StartMultiplication();
 					return true;
+				case 0x00211C:	// M7B
+					// DDDDDDDD dddddddd
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7B	= this.Mode7Latch;
+					this.PpuRegister.StartMultiplication();
+					return true;
+				case 0x00420D:	// MEMSEL
+					// -------F
+					this.IsFastROM		= (data & 1) !== 0;
+					return true;
+			}
+			if((address & 0xFFFF80) == 0x004300){
+				const dmaChannel	= (address >> 4) & 0x07;
+				const registerNumber	= address & 0x0F;
+				this.DmaChannels[dmaChannel].WriteRegister(registerNumber, data);
+				return true;
 			}
 			return false;
 		}
@@ -2941,6 +2989,207 @@ namespace Emulator{
 			this.DataBus	= data;
 
 			return speed;
+		}
+
+		private UpdateMode7Latch(value: number){
+			value		= Utility.Type.ToByte(value);
+			this.Mode7Latch	= Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
+		}
+
+		public ClockIO(){
+			this.PpuRegister.Step();
+		}
+		public CpuStepIO(){
+			this.CpuRegister.Step();
+		}
+	}
+
+	export class CpuRegister{
+		NMITIMEN: number	= 0; // $4200
+		WRIO: number		= 0; // $4201
+		WRMPYA: number		= 0; // $4202
+		WRMPYB: number		= 0; // $4203
+		WRDIVL: number		= 0; // $4204
+		WRDIVH: number		= 0; // $4205
+		WRDIVB: number		= 0; // $4206
+		HTIMEL: number		= 0; // $4207
+		HTIMEH: number		= 0; // $4208
+		VTIMEL: number		= 0; // $4209
+		VTIMEH: number		= 0; // $420A
+		MDMAEN: number		= 0; // $420B
+		HDMAEN: number		= 0; // $420C
+		MEMSEL: number		= 0; // $420D
+		RDNMI: number		= 0; // $4210
+		TIMEUP: number		= 0; // $4211
+		HVBJOY: number		= 0; // $4212
+		RDIO: number		= 0; // $4213
+		RDDIVL: number		= 0; // $4214
+		RDDIVH: number		= 0; // $4215
+		RDMPYL: number		= 0; // $4216
+		RDMPYH: number		= 0; // $4217
+		JOY1L: number		= 0; // $4218
+		JOY1H: number		= 0; // $4219
+		JOY2L: number		= 0; // $421A
+		JOY2H: number		= 0; // $421B
+		JOY3L: number		= 0; // $421C
+		JOY3H: number		= 0; // $421D
+		JOY4L: number		= 0; // $421E
+		JOY4H: number		= 0; // $421F
+
+		private stepMultiplication: number	= 0;
+		private stepDivision: number		= 0;
+
+		public StartMultiplication(){
+			this.stepMultiplication		= 8;
+		}
+		public StartDivision(){
+			this.stepDivision		= 16;
+		}
+
+		public Step(){
+			// TODO: Implements
+		}
+	}
+	export class PpuRegister{
+		INIDISP: number		= 0; // $2100
+		OBSEL: number		= 0; // $2101
+		OAMADDL: number		= 0; // $2102
+		OAMADDH: number		= 0; // $2103
+		OAMDATA: number		= 0; // $2104
+		BGMODE: number		= 0; // $2105
+		MOSAIC: number		= 0; // $2106
+		BG1SC: number		= 0; // $2107
+		BG2SC: number		= 0; // $2108
+		BG3SC: number		= 0; // $2109
+		BG4SC: number		= 0; // $210A
+		BG12NBA: number		= 0; // $210B
+		BG34NBA: number		= 0; // $210C
+		BG1HOFS: number		= 0; // $210D
+		BG1VOFS: number		= 0; // $210E
+		BG2HOFS: number		= 0; // $210F
+		BG2VOFS: number		= 0; // $2110
+		BG3HOFS: number		= 0; // $2111
+		BG3VOFS: number		= 0; // $2112
+		BG4HOFS: number		= 0; // $2113
+		BG4VOFS: number		= 0; // $2114
+		VMAIN: number		= 0; // $2115
+		VMADDL: number		= 0; // $2116
+		VMADDH: number		= 0; // $2117
+		VMDATAL: number		= 0; // $2118
+		VMDATAH: number		= 0; // $2119
+		M7SEL: number		= 0; // $211A
+		M7A: number		= 0; // $211B
+		M7B: number		= 0; // $211C
+		M7C: number		= 0; // $211D
+		M7D: number		= 0; // $211E
+		M7X: number		= 0; // $211F
+		M7Y: number		= 0; // $2120
+		CGADD: number		= 0; // $2121
+		CGDATA: number		= 0; // $2122
+		W12SEL: number		= 0; // $2123
+		W34SEL: number		= 0; // $2124
+		WOBJSEL: number		= 0; // $2125
+		WH0: number		= 0; // $2126
+		WH1: number		= 0; // $2127
+		WH2: number		= 0; // $2128
+		WH3: number		= 0; // $2129
+		WBGLOG: number		= 0; // $212A
+		WOBJLOG: number		= 0; // $212B
+		TM: number		= 0; // $212C
+		TS: number		= 0; // $212D
+		TMW: number		= 0; // $212E
+		TSW: number		= 0; // $212F
+		CGWSEL: number		= 0; // $2130
+		CGADSUB: number		= 0; // $2131
+		COLDATA: number		= 0; // $2132
+		SETINI: number		= 0; // $2133
+		MPYL: number		= 0; // $2134
+		MPYM: number		= 0; // $2135
+		MPYH: number		= 0; // $2136
+		SLHV: number		= 0; // $2137
+		OAMDATAREAD: number	= 0; // $2138
+		VMDATALREAD: number	= 0; // $2139
+		VMDATAHREAD: number	= 0; // $213A
+		CGDATAREAD: number	= 0; // $213B
+		OPHCT: number		= 0; // $213C
+		OPVCT: number		= 0; // $213D
+		STAT77: number		= 0; // $213E
+		STAT78: number		= 0; // $213F
+		APUIO0: number		= 0; // $2140
+		APUIO1: number		= 0; // $2141
+		APUIO2: number		= 0; // $2142
+		APUIO3: number		= 0; // $2143
+		WMDATA: number		= 0; // $2180
+		WMADDL: number		= 0; // $2181
+		WMADDM: number		= 0; // $2182
+		WMADDH: number		= 0; // $2183
+
+		private stepMultiplication: number	= 0;
+
+		public StartMultiplication(){
+			this.stepMultiplication		= 1;
+		}
+
+		public Step(){
+			if(this.stepMultiplication > 0){
+				const result		= Utility.Type.ToShort(this.M7A) * Utility.Type.ToChar(this.M7B);
+				const resultUint	= Utility.Type.ToUint(result);
+				this.MPYL		= Utility.Type.ToByte(resultUint      );
+				this.MPYM		= Utility.Type.ToByte(resultUint >>  8);
+				this.MPYH		= Utility.Type.ToByte(resultUint >> 16);
+
+				this.stepMultiplication--;
+			}
+		}
+	}
+	export class DmaChannel{
+		DMAPn: number	= 0;	// $43n0
+		BBADn: number	= 0;	// $43n1
+		A1TnL: number	= 0;	// $43n2
+		A1TnH: number	= 0;	// $43n3
+		A1Bn: number	= 0;	// $43n4
+		DASnL: number	= 0;	// $43n5
+		DASnH: number	= 0;	// $43n6
+		DASBn: number	= 0;	// $43n7
+		A2AnL: number	= 0;	// $43n8
+		A2AnH: number	= 0;	// $43n9
+		NLTRn: number	= 0;	// $43nA
+		UNUSEDn: number	= 0;	// $43nB / $43nF
+
+		public ReadRegister(registerNumber: number): number | null{
+			switch(registerNumber){
+				case 0x00:	return this.DMAPn;
+				case 0x01:	return this.BBADn;
+				case 0x02:	return this.A1TnL;
+				case 0x03:	return this.A1TnH;
+				case 0x04:	return this.A1Bn;
+				case 0x05:	return this.DASnL;
+				case 0x06:	return this.DASnH;
+				case 0x07:	return this.DASBn;
+				case 0x08:	return this.A2AnL;
+				case 0x09:	return this.A2AnH;
+				case 0x0A:	return this.NLTRn;
+				case 0x0B:	return this.UNUSEDn;
+				case 0x0F:	return this.UNUSEDn;
+			}
+			return null;
+		}
+		public WriteRegister(registerNumber: number, value: number){
+			switch(registerNumber){
+				case 0x00:	this.DMAPn	= value;
+				case 0x01:	this.BBADn	= value;
+				case 0x02:	this.A1TnL	= value;
+				case 0x03:	this.A1TnH	= value;
+				case 0x04:	this.A1Bn	= value;
+				case 0x05:	this.DASnL	= value;
+				case 0x06:	this.DASnH	= value;
+				case 0x07:	this.DASBn	= value;
+				case 0x08:	this.A2AnL	= value;
+				case 0x09:	this.A2AnH	= value;
+				case 0x0A:	this.NLTRn	= value;
+				case 0x0B:	this.UNUSEDn	= value;
+				case 0x0F:	this.UNUSEDn	= value;
+			}
 		}
 	}
 
@@ -4445,7 +4694,7 @@ namespace Assembler{
 					else{
 						const [resolved, message]	= this.ResolveValue(option);
 						pushValue((resolved !== null)? resolved : 0);
-						if(!resolved && strict){
+						if((resolved === null) && strict){
 							pushError(message);
 						}
 					}
