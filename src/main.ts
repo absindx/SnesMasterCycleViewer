@@ -4665,7 +4665,7 @@ namespace Assembler{
 			}
 
 			// expression
-			const matchExpression	= name.match(/^([^\s*/%<>\|\^][^\s\+\-*/%<>\|\^]*)\s*([\+\-*/%<>\|\^]+)\s*(.*)$/);
+			const matchExpression	= name.match(/^([^\s*/%<>&\|\^][^\s\+\-*/%<>&\|\^]*)\s*([\+\-*/%<>&\|\^]+)\s*(.*)$/);
 			if(matchExpression){
 				const leftString	= matchExpression[1];
 				const operator		= matchExpression[2];
@@ -4797,14 +4797,14 @@ namespace Assembler{
 				if(c == '/'){
 					if(prevChar !== '/'){
 						// accept once
-						output	+= ' ';
+						output	+= c;
+						continue;
 					}
 					else{
 						// slash comment, cancel last character
 						output	= output.substring(0, output.length - 1);
 						break;
 					}
-					break;
 				}
 				output	+= c;
 			}
