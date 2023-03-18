@@ -2898,6 +2898,10 @@ namespace Emulator{
 					return [this.PpuRegister.MPYM, 0xFF];
 				case 0x002136:	// MPYH
 					return [this.PpuRegister.MPYH, 0xFF];
+				case 0x004216:	// RDMPYL
+					return [this.CpuRegister.RDMPYL, 0xFF];
+				case 0x004217:	// RDMPYH
+					return [this.CpuRegister.RDMPYH, 0xFF];
 			}
 			if((address & 0xFFFF80) == 0x004300){
 				const dmaChannel	= (address >> 4) & 0x07;
@@ -2914,17 +2918,69 @@ namespace Emulator{
 		 */
 		private HookIOWrite(address: number, data: number): boolean{
 			switch(address){
+				case 0x00210D:	// BG1HOFS
+					// ---XXXXX XXXXXXXX
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.BG1HOFS	= this.Mode7Latch & 0x1FFF;
+					return true;
+				case 0x00210E:	// BG1VOFS
+					// ---YYYYY YYYYYYYY
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.BG1VOFS	= this.Mode7Latch & 0x1FFF;
+					return true;
 				case 0x00211B:	// M7A
 					// DDDDDDDD dddddddd
 					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7A	= this.Mode7Latch;
+					this.PpuRegister.M7A		= this.Mode7Latch;
 					this.PpuRegister.StartMultiplication();
 					return true;
 				case 0x00211C:	// M7B
 					// DDDDDDDD dddddddd
 					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7B	= this.Mode7Latch;
+					this.PpuRegister.M7B		= this.Mode7Latch;
 					this.PpuRegister.StartMultiplication();
+					return true;
+				case 0x00211D:	// M7C
+					// DDDDDDDD dddddddd
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7C		= this.Mode7Latch;
+					return true;
+				case 0x00210E:	// M7D
+					// DDDDDDDD dddddddd
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7D		= this.Mode7Latch;
+					return true;
+				case 0x00211F:	// M7X
+					// ---XXXXX XXXXXXXX
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7X		= this.Mode7Latch & 0x1FFF;
+					return true;
+				case 0x002120:	// M7Y
+					// ---YYYYY YYYYYYYY
+					this.UpdateMode7Latch(data);
+					this.PpuRegister.M7Y		= this.Mode7Latch & 0x1FFF;
+					return true;
+				case 0x004202:	// WRMPYA
+					// DDDDDDDD
+					this.CpuRegister.WRMPYA	= data;
+					return true;
+				case 0x004203:	// WRMPYB
+					// DDDDDDDD
+					this.CpuRegister.WRMPYB	= data;
+					this.CpuRegister.StartMultiplication();
+					return true;
+				case 0x004204:	// WRDIVL
+					// LLLLLLLL
+					this.CpuRegister.WRDIVL	= data;
+					return true;
+				case 0x004205:	// WRDIVH
+					// HHHHHHHH
+					this.CpuRegister.WRDIVH	= data;
+					return true;
+				case 0x004206:	// WRDIVB
+					// DDDDDDDD
+					this.CpuRegister.WRDIVB	= data;
+					this.CpuRegister.StartMultiplication();
 					return true;
 				case 0x00420D:	// MEMSEL
 					// -------F
