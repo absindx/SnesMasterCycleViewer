@@ -1,0 +1,169 @@
+﻿<!DOCTYPE html>
+<html>
+ <head>
+  <meta charset="UTF-8">
+  <title>SNES master cycle viewer - Manual</title>
+  <!-- <link rel="shortcut icon" href="favicon.ico"> -->
+  <link rel="stylesheet" type="text/css" href="style.css">
+
+  <style type="text/css">
+	.CodeMixedBlock .Syntax, .CodeMixedBlock .Example{
+		font-family		: "SFMono-Regular","Consolas","Liberation Mono","Menlo","Courier","monospace";
+	}
+	.comment{
+		color			: #008000;
+	}
+	textarea{
+		width			: 82ch;
+		min-width		: 16em;
+		min-height		: 8em;
+		overflow		: scroll;
+	}
+  </style>
+
+ </head>
+ <body>
+  <header>
+   <h1>SNES master cycle viewer - Manual</h1>
+  </header>
+  <main>
+   <section>
+    <h2>Assembler</h2>
+     <article>
+      <h3>Note</h3>
+      <p>It is a simple assembler and does not have complex functions.</p>
+      <p>Since strict addressing optimization is not performed, please add a length specification as necessary.</p>
+     </article>
+     <article>
+      <h3>Instruction syntax</h3>
+       <table id="AssemblerInstructionSyntax" class="CodeMixedBlock">
+        <tr><th>Addressing</th				><th>Syntax</th							><th>Example</th							></tr>
+        <tr><td>Implied</td				><td class="Syntax">(none)</td					><td class="Example">NOP</td						></tr>
+        <tr><td>Accumulator</td				><td class="Syntax">(none)<br	>A</td				><td class="Example">ASL<br		>ASL A</td			></tr>
+        <tr><td>Stack</td				><td class="Syntax">(none)</td					><td class="Example">RTS</td						></tr>
+        <tr><td>Immediate</td				><td class="Syntax">#imm<br	>.b #imm<br	>.w #imm</td	><td class="Example">LDA #$00<br	>LDA.b #$01<br	>LDA.w #$01</td	></tr>
+        <tr><td>Direct page</td				><td class="Syntax">dp<br	>.b dp</td			><td class="Example">LDA $00<br		>LDA.b $00</td			></tr>
+        <tr><td>Direct page Indexed, X</td		><td class="Syntax">dp, X<br	>.b dp, X</td			><td class="Example">LDA $00, X<br	>LDA.b $00, X</td		></tr>
+        <tr><td>Direct page Indexed, Y</td		><td class="Syntax">dp, Y<br	>.b dp, Y</td			><td class="Example">LDA $00, Y<br	>LDA.b $00, Y</td		></tr>
+        <tr><td>Direct page Indirect</td		><td class="Syntax">(dp)</td					><td class="Example">LDA ($00)</td					></tr>
+        <tr><td>Direct page Indexed Indirect, X</td	><td class="Syntax">(dp, X)</td					><td class="Example">LDA ($00, X)</td					></tr>
+        <tr><td>Direct page Indirect Indexed, Y</td	><td class="Syntax">(dp), Y</td					><td class="Example">LDA ($00), Y</td					></tr>
+        <tr><td>Direct page Indirect Long</td		><td class="Syntax">[dp]</td					><td class="Example">LDA [$00]</td					></tr>
+        <tr><td>Direct page Indirect Long Indexed, Y</td><td class="Syntax">[dp], Y</td					><td class="Example">LDA [$00], Y</td					></tr>
+        <tr><td>Absolute</td				><td class="Syntax">abs<br	>.w abs</td			><td class="Example">LDA $0000<br	>LDA.w $0000</td		></tr>
+        <tr><td>Absolute Indexed, X</td			><td class="Syntax">abs, X<br	>.w abs, X</td			><td class="Example">LDA $0000, X<br	>LDA.w $0000, X</td		></tr>
+        <tr><td>Absolute Indexed, Y</td			><td class="Syntax">abs, Y<br	>.w abs, Y</td			><td class="Example">LDA $0000, Y<br	>LDA.w $0000, Y</td		></tr>
+        <tr><td>Absolute Indirect</td			><td class="Syntax">(abs)</td					><td class="Example">JMP ($0123)</td					></tr>
+        <tr><td>Absolute Indexed Indirect</td		><td class="Syntax">(abs, X)</td				><td class="Example">JMP ($0123, X)</td					></tr>
+        <tr><td>Absolute Indirect Long</td		><td class="Syntax">[abs]</td					><td class="Example">JMP [$0123]</td					></tr>
+        <tr><td>Absolute Long</td			><td class="Syntax">long<br	>.l long</td			><td class="Example">LDA $000000<br	>LDA.l $000000</td		></tr>
+        <tr><td>Absolute Long Indexed, X</td		><td class="Syntax">long, X<br	>.l long</td			><td class="Example">LDA $000000, X<br	>LDA.l $000000, X</td		></tr>
+        <tr><td>Relative</td				><td class="Syntax">rel</td					><td class="Example">BEQ Label</td					></tr>
+        <tr><td>Relative Long</td			><td class="Syntax">rlong</td					><td class="Example">BRL Label</td					></tr>
+        <tr><td>Stack Relative</td			><td class="Syntax">sr, S</td					><td class="Example">LDA $00, S</td					></tr>
+        <tr><td>Stack Relative Indirect Indexed, Y</td	><td class="Syntax">(sr, S), Y</td				><td class="Example">LDA ($00, S), Y</td				></tr>
+        <tr><td>Block Move</td				><td class="Syntax">src, dst</td				><td class="Example">MVP $00, $01</td					></tr>
+       </table>
+     </article>
+     <article>
+      <h3>Directive</h3>
+       <table id="AssemblerDirective" class="CodeMixedBlock">
+        <tr><th>Name</th				><th>Syntax</th							><th>Example</th							></tr>
+        <tr><td>Origin</td				><td class="Syntax">.org address</td				><td class="Example">.org $008000</td					></tr>
+        <tr><td>Byte array</td				><td class="Syntax">.db value, value, value, ...</td		><td class="Example">.db $00, 1, "2", Label</td				></tr>
+        <tr><td>Word array</td				><td class="Syntax">.dw value, value, value, ...</td		><td class="Example">.dw $00, 1, "2", Label</td				></tr>
+        <tr><td>Long array</td				><td class="Syntax">.dl value, value, value, ...</td		><td class="Example">.dl $00, 1, "2", Label</td				></tr>
+        <tr><td>Dword array</td				><td class="Syntax">.dd value, value, value, ...</td		><td class="Example">.dd $00, 1, "2", Label</td				></tr>
+        <tr><td>Memory short</td			><td class="Syntax">.m8</td					><td class="Example">.m8<br		>LDA #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A9 00</span></td	></tr>
+        <tr><td>Memory long</td				><td class="Syntax">.m16</td					><td class="Example">.m16<br		>LDA #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A9 00 00</span></td	></tr>
+        <tr><td>Index short</td				><td class="Syntax">.i8</td					><td class="Example">.i8<br		>LDX #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A2 00</span></td	></tr>
+        <tr><td>Index long</td				><td class="Syntax">.i16</td					><td class="Example">.i16<br		>LDX #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A2 00 00</span></td	></tr>
+        <tr><td>Direct pointer value</td		><td class="Syntax">.dp value</td				><td class="Example">.org $008000<br	>.dp $0123<br	>LDA $0124&nbsp;<span class="comment">; A5 01</span></td	></tr>
+       </table>
+     </article>
+     <article>
+      <h3>Label</h3>
+       <table id="AssemblerLabel" class="CodeMixedBlock">
+        <tr><th>Name</th				><th>Syntax</th							><th>Example</th							></tr>
+        <tr><td>Global label</td			><td class="Syntax">Label:</td					><td class="Example">Label:</td						></tr>
+        <tr><td>Local label</td				><td class="Syntax">.Label</td					><td class="Example">Label:<br	>.Local</td				></tr>
+        <tr><td>Unnamed label (Forward)</td		><td class="Syntax">+</td					><td class="Example">BRA +<br	>+ NOP</td				></tr>
+        <tr><td>Unnamed label (Backward)</td		><td class="Syntax">-</td					><td class="Example">- NOP<br	>BRA -</td				></tr>
+       </table>
+     </article>
+     <article>
+      <h3>Define</h3>
+       <table id="AssemblerDefine" class="CodeMixedBlock">
+        <tr><th>Name</th				><th>Syntax</th				><th>Example</th											></tr>
+        <tr><td>Define</td				><td class="Syntax">Name = Value</td	><td class="Example">Counter = $13<br	>INC Counter&nbsp;<span class="comment">; E6 13</span></td	></tr>
+       </table>
+     </article>
+     <article>
+      <h3>Comment</h3>
+       <table id="AssemblerComment" class="CodeMixedBlock">
+        <tr><th>Name</th				><th>Syntax</th					><th>Example</th												></tr>
+        <tr><td>Single line</td				><td class="Syntax">; ...<br	>// ...</td	><td class="Example"><span class="comment">; comment</span><br	><span class="comment">// comment</span></td	></tr>
+       </table>
+     </article>
+     <article>
+      <h3>Expression</h3>
+       <p>Operators are evaluated left to right with no associative order.</p>
+       <table id="AssemblerExpression" class="CodeMixedBlock">
+        <tr><th>Name</th				><th>Syntax</th				><th>Example</th										></tr>
+        <tr><td>Addition</td				><td class="Syntax">+</td		><td class="Example">LDA.b #$12+3&nbsp;&nbsp;<span class="comment"	>; A9 15</span></td	></tr>
+        <tr><td>Subtraction</td				><td class="Syntax">-</td		><td class="Example">LDA.b #$12-3&nbsp;&nbsp;<span class="comment"	>; A9 0F</span></td	></tr>
+        <tr><td>Multiplication</td			><td class="Syntax">*</td		><td class="Example">LDA.b #$12*3&nbsp;&nbsp;<span class="comment"	>; A9 36</span></td	></tr>
+        <tr><td>Division</td				><td class="Syntax">/</td		><td class="Example">LDA.b #$12/3&nbsp;&nbsp;<span class="comment"	>; A9 06</span></td	></tr>
+        <tr><td>Modulo</td				><td class="Syntax">%</td		><td class="Example">LDA.b #$12%3&nbsp;&nbsp;<span class="comment"	>; A9 00</span></td	></tr>
+        <tr><td>Logical shift left</td			><td class="Syntax">&lt;&lt;</td	><td class="Example">LDA.b #$12&lt;&lt;3&nbsp;<span class="comment"	>; A9 90</span></td	></tr>
+        <tr><td>Logical shift right</td			><td class="Syntax">&gt;&gt;</td	><td class="Example">LDA.b #$12&gt;&gt;3&nbsp;<span class="comment"	>; A9 02</span></td	></tr>
+        <tr><td>Bitwise AND</td				><td class="Syntax">&amp;</td		><td class="Example">LDA.b #$12&amp;3&nbsp;&nbsp;<span class="comment"	>; A9 02</span></td	></tr>
+        <tr><td>Bitwise OR</td				><td class="Syntax">|</td		><td class="Example">LDA.b #$12|3&nbsp;&nbsp;<span class="comment"	>; A9 13</span></td	></tr>
+        <tr><td>Bitwise XOR</td				><td class="Syntax">^</td		><td class="Example">LDA.b #$12^3&nbsp;&nbsp;<span class="comment"	>; A9 11</span></td	></tr>
+        <tr><td>Negative</td				><td class="Syntax">-</td		><td class="Example">LDA.b #-$12&nbsp;&nbsp;&nbsp;<span class="comment"	>; A9 EE</span></td	></tr>
+       </table>
+     </article>
+   </section>
+   <section>
+    <h2>Emulation</h2>
+
+    <article>
+     <h3>I/O Registers</h3>
+       <table id="EmulationIORegisters">
+        <tr><th>Register</th				><th>Address</th			><th>Access</th			></tr>
+        <tr><td class="Register">M7A</td		><td class="Address">$211B</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">M7B</td		><td class="Address">$211C</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">MPYL</td		><td class="Address">$2134</td		><td class="Access">Read</td	></tr>
+        <tr><td class="Register">MPYM</td		><td class="Address">$2135</td		><td class="Access">Read</td	></tr>
+        <tr><td class="Register">MPYB</td		><td class="Address">$2136</td		><td class="Access">Read</td	></tr>
+        <tr><td class="Register">MEMSEL</td		><td class="Address">$420D</td		><td class="Access">Write</td	></tr>
+<!--
+        <tr><td class="Register">WRMPYA</td		><td class="Address">$4202</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">WRMPYB</td		><td class="Address">$4203</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">WRDIVL</td		><td class="Address">$4204</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">WRDIVH</td		><td class="Address">$4205</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">WRDIVB</td		><td class="Address">$4206</td		><td class="Access">Write</td	></tr>
+        <tr><td class="Register">RDMPYL</td		><td class="Address">$4216</td		><td class="Access">Read</td	></tr>
+        <tr><td class="Register">RDMPYH</td		><td class="Address">$4217</td		><td class="Access">Read</td	></tr>
+-->
+       </table>
+     </article>
+   </section>
+   <section>
+    <h2>Sample</h2>
+
+    <article>
+     <h3>ToDo</h3>
+      <textarea id="AssemblerSource" rows="16" cols="80" wrap="off">		; TODO
+</textarea>
+
+     </article>
+   </section>
+
+  </main>
+
+  <footer>
+   <p class="author"><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></p>
+  </footer>
+ </body>
+</html>

@@ -4,6 +4,11 @@
 body{
 	margin			: 0px;
 	padding			: 0px;
+	color			: #000000;
+}
+body.dark{
+	color			: silver;
+	background-color	: #101010;
 }
 
 h1, h2{
@@ -16,6 +21,9 @@ h1{
 	color			: #002C3C;
 	border-bottom		: 1px solid #00AEEF;
 	background-color	: RGBA(0, 174, 239, 0.25);
+}
+.dark h1, .dark h1 a{
+	color			: #BFEAFB;
 }
 h2{
 	margin			: 8px 0px 4px;
@@ -44,6 +52,10 @@ footer{
 	border-top		: 1px solid RGBA(0, 0, 0, 0.25);
 	background-color	: RGBA(0, 0, 0, 0.125);
 }
+.dark footer{
+	border-color		: RGBA(255, 255, 255, 0.25);
+	background-color	: RGBA(255, 255, 255, 0.125);
+}
 
 footer .author{
 	text-align		: center;
@@ -59,6 +71,9 @@ p{
 }
 .small{
 	font-size		: 80%;
+}
+.dark a{
+	color			: #3FC2F3;
 }
 
 img{
@@ -78,15 +93,24 @@ table{
 
 	border-collapse		: collapse;
 }
-th{
-	border			: solid 1px RGBA(0, 0, 0, 0.125);
-	background-color	: RGBA(0, 0, 0, 0.1);
-}
 tr:hover{
 	background-color	: RGBA(0, 174, 239, 0.1);
 }
+thead td, tr.head td, th{
+	border			: solid 1px #bbbbbb;
+	background-color	: RGBA(0, 0, 0, 0.1);
+	font-weight		: bold;
+	text-align		: center;
+}
+.dark thead td, .dark tr.head td, .dark th{
+	border-color		: #555555;
+	background-color	: RGBA(255, 255, 255, 0.1);
+}
 td{
 	border			: solid 1px #cccccc;
+}
+.dark td{
+	border-color		: #444444;
 }
 td, th{
 	padding			: 2px 8px;
@@ -119,6 +143,14 @@ header a:link{
 header a:hover{
 	opacity			: 0.75;
 	text-decoration		: underline;
+}
+.dark header a:link{
+	color			: #BFEAFB;
+}
+
+.dark textarea{
+	background-color	: RGBA(255, 255, 255, 0.1);
+	color			: silver;
 }
 
 .jokeDel{
@@ -156,6 +188,7 @@ textarea{
 #AssemblerMain textarea{
 	resize			: vertical;
 	width			: 82ch;
+	min-height		: 8em;
 }
 #AssemblerHexfile textarea{
 	resize			: none;
