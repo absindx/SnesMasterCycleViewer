@@ -125,8 +125,8 @@ dt{
 	float			: left;
 	clear			: left;
 	width			: 128px;
-	display			: list-item;
-	margin-left		: 24px;
+	/* display		: list-item; */
+	margin-left		: 0px;
 	width			: 192px;
 }
 dd:before{
@@ -148,23 +148,39 @@ header a:hover{
 	color			: #BFEAFB;
 }
 
-.dark textarea{
+.dark textarea, .dark input{
 	background-color	: RGBA(255, 255, 255, 0.1);
 	color			: silver;
+}
+input[type="number"]{
+	text-align		: right;
 }
 
 .jokeDel{
 	text-decoration		: line-through;
 }
 
+.comment{
+	color			: #008000;
+}
+code.inline{
+	background-color	: RGBA(128, 128, 128, 0.25);
+	border-radius		: 4px;
+	padding			: 2px 4px;
+	padding-right		: 4px;
+}
+
 /**************************************************/
 
 #ErrorMessage{
-	color			: #3C1000;
-	border			: solid 1px #EF4000;
-	background-color	: RGBA(239, 64, 0, 0.25);
+	color			: #CC0000;
+	border			: solid 1px #CC0000;
+	background-color	: RGBA(204, 0, 0, 0.25);
 	margin			: 8px;
 	border-radius		: 4px;
+}
+.dark #ErrorMessage{
+	color			: #CCA0A0;
 }
 
 .hide{
@@ -174,6 +190,20 @@ header a:hover{
 textarea{
 	display			: block;
 	margin			: auto;
+}
+
+fieldset{
+	border			: solid 2px #808080;
+	background		: RGBA(128, 128, 128, 0.10);
+	margin			: 2px 8px;
+	padding			: 4px;
+}
+fieldset dl{
+	margin			: 4px;
+}
+
+.hexinput{
+	text-align		: right;
 }
 
 #Assembler article{

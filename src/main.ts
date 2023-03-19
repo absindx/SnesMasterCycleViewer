@@ -2772,7 +2772,7 @@ namespace Emulator{
 
 	export class Memory{
 		private AddressSpace: {[Address: number]: number}	= {};
-		ROMMapping: ROMMapping	= ROMMapping.LoROM;
+		ROMMapping: RomMapping	= RomMapping.LoROM;
 		IsFastROM: boolean	= false;
 
 		CpuRegister: CpuRegister	= new CpuRegister();
@@ -2847,7 +2847,7 @@ namespace Emulator{
 				return [AccessRegion.IO, address];
 			}
 
-			if(this.ROMMapping === ROMMapping.LoROM){
+			if(this.ROMMapping === RomMapping.LoROM){
 				if(((bank & 0x40) === 0) && Utility.Math.IsRange(page, 0x6000, 0x8000)){
 					// Open bus
 					return [AccessRegion.OpenBus, address];
@@ -2865,7 +2865,7 @@ namespace Emulator{
 					return [AccessRegion.ROM, address];
 				}
 			}
-			else if(this.ROMMapping === ROMMapping.HiROM){
+			else if(this.ROMMapping === RomMapping.HiROM){
 				if(Utility.Math.IsRange(bank & 0x7F, 0x00, 0x10) && Utility.Math.IsRange(page, 0x6000, 0x8000)){
 					// Open bus
 					// $00-0F,80-8F:6000-7FFF
@@ -3548,7 +3548,7 @@ namespace Emulator{
 		Slow	= 8,
 		XSlow	= 12,
 	}
-	export enum ROMMapping{
+	export enum RomMapping{
 		LoROM,
 		HiROM,
 		// ExLoROM,
@@ -5166,14 +5166,16 @@ namespace Application{
 		private static Memory: Emulator.Memory			= new Emulator.Memory();
 		private static Cpu: Emulator.Cpu			= new Emulator.Cpu(this.Memory);
 
-		static Dom: {[name: string]: HTMLElement}	= {
-			'ErrorMessage':		document.createElement('span'),
-			'AssemblerSource':	document.createElement('span'),
-			'AssemblerOutput':	document.createElement('span'),
-			'HexIntelHex':		document.createElement('span'),
-			'HexSrec':		document.createElement('span'),
-			'AssemblerAssemble':	document.createElement('span'),
-			'AssembledRun':		document.createElement('span'),
+		private static dummyNode	= document.createElement('span');
+		private static dummyInputNode	= document.createElement('input');
+		private static Dom: {[name: string]: HTMLElement}	= {
+			'ErrorMessage':		Main.dummyNode,
+			'AssemblerSource':	Main.dummyNode,
+			'AssemblerOutput':	Main.dummyNode,
+			'HexIntelHex':		Main.dummyNode,
+			'HexSrec':		Main.dummyNode,
+			'AssemblerAssemble':	Main.dummyNode,
+			'AssembledRun':		Main.dummyNode,
 		};
 
 		public static Initialize(){
@@ -5193,6 +5195,7 @@ namespace Application{
 		}
 
 		private static GetDomElements(): boolean{
+			let result	= true;
 			const set	= (name: string): boolean => {
 				const element	= document.querySelector<HTMLElement>('#' + name);
 				if(element){
@@ -5201,22 +5204,17 @@ namespace Application{
 				}
 				return false;
 			}
-			if(	true	// placeholder
-				&& set("ErrorMessage")
-				&& set("AssemblerSource")
-				&& set("AssemblerOutput")
-				&& set("HexIntelHex")
-				&& set("HexSrec")
-				&& set("AssemblerAssemble")
-				&& set("AssembledRun")
-			){
-				return true;
+			for(const key in Main.Dom){
+				result	&&= set(key);
 			}
-			return false;
+			return result;
 		}
 
 		public static Assemble(){
 			Main.Assembled	= null;
+
+			// Setting from form
+			const setting		= Main.GetSetting();
 
 			const sourceElement	= Main.Dom.AssemblerSource as HTMLInputElement;
 			const source		= sourceElement.value;
@@ -5224,7 +5222,7 @@ namespace Application{
 				Main.SetAssemblerError(false, []);
 				return;
 			}
-			const [assembled, message]	= Assembler.Assembler.Assemble(source, Main.AssembleStartAddress);
+			const [assembled, message]	= Assembler.Assembler.Assemble(source, setting.StartAddress);
 			if(assembled === null){
 				Main.SetAssemblerError(false, message);
 				return;
@@ -5246,13 +5244,14 @@ namespace Application{
 			const memory	= new Emulator.Memory();
 			Main.Memory	= memory;
 
-			// TODO: Set from form
-			memory.ROMMapping	= Emulator.ROMMapping.LoROM;
-			memory.IsFastROM	= false;
-			const maxCycle		= 10000;
-			const statusFlagE	= false;
+			// Setting from form
+			const setting		= Main.GetSetting();
+			memory.ROMMapping	= setting.RomMapping;
+			memory.IsFastROM	= setting.FastRom;
+			const maxCycle		= setting.MaxCycle;
+			const statusFlagE	= setting.StatusFlagE;
 
-			Main.UploadDefaultMemory();
+			Main.UploadDefaultMemory(setting.StartAddress);
 			Main.UploadMemory();
 
 			const cpu		= new Emulator.Cpu(Main.Memory);
@@ -5261,22 +5260,26 @@ namespace Application{
 			const initialRegisters	= new Emulator.Registers();
 			initialRegisters.SetStatusFlagE(statusFlagE);
 			cpu.ResetRegisters	= {
-			//	PB:	Utility.Type.ToByte(Main.AssembleStartAddress >> 16),
-			//	PC:	Utility.Type.ToWord(Main.AssembleStartAddress),
-				E:	(statusFlagE)? 1 : 0,
-			//	P:	0x14,	// TODO: Debug .longm
-			//	X:	0x8000,
-			//	Y:	0x8000,
+				PB:	Utility.Type.ToByte(setting.StartAddress >> 16),
+				PC:	Utility.Type.ToWord(setting.StartAddress & 0x00FFFF),
+				E:	(setting.StatusFlagE)? 1 : 0,
 			};
 
 			cpu.Boot();
 
 			// TODO: Debug
 			let stepCounter	= 0;
-			// while(!cpu.CpuHalted && (cpu.CycleCounter < maxCycle) && (stepCounter < maxCycle)){
-			while(!cpu.CpuHalted && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle) && ((cpu.Logs.length <= 0) || (cpu.Logs[cpu.Logs.length - 1].Instruction !== Emulator.Instruction.BRK))){
+			while((!cpu.CpuHalted) && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle)){
 				cpu.Step();
 				stepCounter++;
+
+				if(cpu.Logs.length > 0){
+					const lastInstruction	= cpu.Logs[cpu.Logs.length - 1].Instruction;
+					const settingStop	= setting.GetEmulationStopInstruction(lastInstruction);
+					if(settingStop){
+						break;
+					}
+				}
 			}
 
 			// TODO: Debug
@@ -5291,7 +5294,7 @@ namespace Application{
 				memory.WriteByte(chunk.Address + i, chunk.Data[i], true);
 			}
 		}
-		private static UploadDefaultMemory(){
+		private static UploadDefaultMemory(startAddress: number){
 			const resetVector: Assembler.DataChunk	= {
 				Address: 0x00FFE0,
 				Data: []
@@ -5301,7 +5304,7 @@ namespace Application{
 				chunk.Data.push(Utility.Type.ToByte(value >>  8));
 			}
 			for(let i = 0; i < 16; i++){
-				pushWord(resetVector, Main.AssembleStartAddress);
+				pushWord(resetVector, startAddress);
 			}
 
 			Main.UploadChunk(Main.Memory, resetVector);
@@ -5313,6 +5316,47 @@ namespace Application{
 			for(let i = 0; i < Main.Assembled.length; i++){
 				Main.UploadChunk(Main.Memory, Main.Assembled[i]);
 			}
+		}
+
+		private static GetSetting(): Setting{
+
+			function getDom(name: string): HTMLInputElement{
+				const dom	= document.querySelector<HTMLInputElement>('#SettingForm input[name="' + name + '"]');
+				return dom ?? Main.dummyInputNode;
+			}
+
+			const setting: Setting	= new Setting;
+			setting.RomMapping		= Main.GetFormRadio<Emulator.RomMapping>('mapping', {
+				'lorom': Emulator.RomMapping.LoROM,
+				'hirom': Emulator.RomMapping.HiROM,
+			}, Emulator.RomMapping.LoROM);
+			setting.FastRom			= Main.GetFormBoolean(getDom('fastrom'));
+			setting.StatusFlagE		= Main.GetFormBoolean(getDom('eflag'));
+			setting.StartAddress		= Main.GetFormNumber( getDom('startpc'), 16, 0x008000);
+			setting.MaxCycle		= Main.GetFormNumber( getDom('cycle'), 10, 10000);
+			setting.EmulationStopSTP	= Main.GetFormBoolean(getDom('stops'));
+			setting.EmulationStopWAI	= Main.GetFormBoolean(getDom('stopw'));
+			setting.EmulationStopBRK	= Main.GetFormBoolean(getDom('stopb'));
+			setting.EmulationStopCOP	= Main.GetFormBoolean(getDom('stopc'));
+			setting.EmulationStopWDM	= Main.GetFormBoolean(getDom('stopr'));
+
+			return setting;
+		}
+		private static GetFormBoolean(dom: HTMLInputElement): boolean{
+			return dom.checked;
+		}
+		private static GetFormNumber(dom: HTMLInputElement, base: number, defaultValue: number): number{
+			const value	= parseInt(dom.value, base);
+			return (isNaN(value))? defaultValue : value;
+		}
+		private static GetFormRadio<ReturnType>(name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
+			for(const key in values){
+				const dom	= document.querySelector('#SettingForm input[name="' + name + '"][value="' + key + '"]');
+				if((dom instanceof HTMLInputElement) && dom.checked){
+					return values[key];
+				}
+			}
+			return defaultValue;
 		}
 
 		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
@@ -5395,6 +5439,30 @@ namespace Application{
 					);
 				}
 			}
+		}
+	}
+
+	class Setting{
+		RomMapping: Emulator.RomMapping	= Emulator.RomMapping.LoROM;
+		FastRom: boolean		= false;
+		StatusFlagE: boolean		= false;
+		StartAddress: number		= 0x008000;
+		MaxCycle: number		= 10000;
+		EmulationStopSTP: boolean	= true;
+		EmulationStopWAI: boolean	= false;
+		EmulationStopBRK: boolean	= false;
+		EmulationStopCOP: boolean	= false;
+		EmulationStopWDM: boolean	= false;
+
+		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
+			switch(instruction){
+				case Emulator.Instruction.STP:	return this.EmulationStopSTP;
+				case Emulator.Instruction.WAI:	return this.EmulationStopWAI;
+				case Emulator.Instruction.BRK:	return this.EmulationStopBRK;
+				case Emulator.Instruction.COP:	return this.EmulationStopCOP;
+				case Emulator.Instruction.WDM:	return this.EmulationStopWDM;
+			}
+			return false;
 		}
 	}
 
