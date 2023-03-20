@@ -1,6 +1,10 @@
 @charset "UTF-8";
 /* @import url("code.css"); */
 
+:root{
+	--monospace-font	: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
 body{
 	margin			: 0px;
 	padding			: 0px;
@@ -168,9 +172,20 @@ code.inline{
 	border-radius		: 4px;
 	padding			: 2px 4px;
 	padding-right		: 4px;
+	font-family		: var(--monospace-font);
 }
 
 /**************************************************/
+
+:root{
+	--application-width	: 96ch;
+	--large-textbox-width	: 82ch;
+	--small-textbox-width	: 50ch;
+}
+
+body{
+	min-width		: var(--application-width);
+}
 
 #ErrorMessage{
 	color			: #CC0000;
@@ -202,8 +217,17 @@ fieldset dl{
 	margin			: 4px;
 }
 
+.intinput{
+	text-align		: right;
+}
 .hexinput{
 	text-align		: right;
+	text-transform		: uppercase;
+}
+
+#SettingForm{
+	width			: var(--application-width);
+	margin			: auto;
 }
 
 #Assembler article{
@@ -217,12 +241,12 @@ fieldset dl{
 }
 #AssemblerMain textarea{
 	resize			: vertical;
-	width			: 82ch;
+	width			: var(--large-textbox-width);
 	min-height		: 8em;
 }
 #AssemblerHexfile textarea{
 	resize			: none;
-	width			: 50ch;
+	width			: var(--small-textbox-width);
 }
 #AssemblerMain, #AssemblerHexfile{
 	margin			: 0px 2px;
@@ -246,6 +270,19 @@ fieldset dl{
 
 .errorMessage{
 	color			: red;
+}
+
+@media (max-width: 82ch){
+	#AssemblerContainer{
+		display		: block;
+	}
+	#AssemblerHexfile textarea{
+		width			: var(--large-textbox-width);
+		height			: 8em;
+	}
+	#AssemblerHexfile div{
+		display			: block;
+	}
 }
 
 

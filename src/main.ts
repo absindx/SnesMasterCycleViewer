@@ -5185,13 +5185,15 @@ namespace Application{
 				return;
 			}
 
-			Main.Dom.ErrorMessage.classList.add('hide');
-
-			Main.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
+			DomUtility.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
+			DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
+			DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
+
+			Main.Dom.ErrorMessage.classList.add('hide');
 		}
 
 		private static GetDomElements(): boolean{
@@ -5267,7 +5269,6 @@ namespace Application{
 
 			cpu.Boot();
 
-			// TODO: Debug
 			let stepCounter	= 0;
 			while((!cpu.CpuHalted) && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle)){
 				cpu.Step();
@@ -5387,9 +5388,57 @@ namespace Application{
 			textarea.textContent	= '';
 		}
 
-		private static AllowTab(element: HTMLInputElement){
+		private static DumpCpuLog(cpu: Emulator.Cpu){
+			for(let i = 0; i < cpu.Logs.length; i++){
+				const instructionLog	= cpu.Logs[i];
+				console.log(`[${i}] ${instructionLog.GetLogString()}`);
+				for(let j = 0; j < instructionLog.AccessLog.length; j++){
+					const accessLog	= instructionLog.AccessLog[j];
+					console.log(`  [${Utility.Format.PadSpace(Emulator.AccessType[accessLog.Type], 12)}]`
+						+ ` $${Utility.Format.ToHexString(accessLog.AddressBus, 6)} = $${Utility.Format.ToHexString(accessLog.DataBus, 2)}`
+						+ ` @ ${Emulator.AccessSpeed[accessLog.Cycle]}`
+					);
+				}
+			}
+		}
+	}
+
+	class Setting{
+		RomMapping: Emulator.RomMapping	= Emulator.RomMapping.LoROM;
+		FastRom: boolean		= false;
+		StatusFlagE: boolean		= false;
+		StartAddress: number		= 0x008000;
+		MaxCycle: number		= 10000;
+		EmulationStopSTP: boolean	= true;
+		EmulationStopWAI: boolean	= false;
+		EmulationStopBRK: boolean	= false;
+		EmulationStopCOP: boolean	= false;
+		EmulationStopWDM: boolean	= false;
+
+		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
+			switch(instruction){
+				case Emulator.Instruction.STP:	return this.EmulationStopSTP;
+				case Emulator.Instruction.WAI:	return this.EmulationStopWAI;
+				case Emulator.Instruction.BRK:	return this.EmulationStopBRK;
+				case Emulator.Instruction.COP:	return this.EmulationStopCOP;
+				case Emulator.Instruction.WDM:	return this.EmulationStopWDM;
+			}
+			return false;
+		}
+	}
+
+	class DomUtility{
+		public static ApplyDomEvents<ElementType extends Element>(selector: string, domEvent: (element: ElementType) => void){
+			const doms	= document.querySelectorAll<ElementType>(selector);
+			doms.forEach((dom) => {
+				domEvent(dom);
+			})
+		}
+
+		// Allow tab input
+		public static AllowTab(element: HTMLInputElement){
 			element.addEventListener('keydown', (e: KeyboardEvent) => {
-				Main.AllowTabEvent(element, e);
+				DomUtility.AllowTabEvent(element, e);
 			});
 		}
 		private static AllowTabEvent(obj: HTMLInputElement, e: KeyboardEvent){
@@ -5427,42 +5476,108 @@ namespace Application{
 			}
 		}
 
-		private static DumpCpuLog(cpu: Emulator.Cpu){
-			for(let i = 0; i < cpu.Logs.length; i++){
-				const instructionLog	= cpu.Logs[i];
-				console.log(`[${i}] ${instructionLog.GetLogString()}`);
-				for(let j = 0; j < instructionLog.AccessLog.length; j++){
-					const accessLog	= instructionLog.AccessLog[j];
-					console.log(`  [${Utility.Format.PadSpace(Emulator.AccessType[accessLog.Type], 12)}]`
-						+ ` $${Utility.Format.ToHexString(accessLog.AddressBus, 6)} = $${Utility.Format.ToHexString(accessLog.DataBus, 2)}`
-						+ ` @ ${Emulator.AccessSpeed[accessLog.Cycle]}`
-					);
-				}
+		private static FormattedInputSkipKey(key: string): boolean{
+			switch(key){
+				case 'Delete':
+				case 'Backspace':
+				case 'Shift':
+				case 'Control':
+				case 'Alt':
+				case 'Tab':
+					return true;
 			}
-		}
-	}
-
-	class Setting{
-		RomMapping: Emulator.RomMapping	= Emulator.RomMapping.LoROM;
-		FastRom: boolean		= false;
-		StatusFlagE: boolean		= false;
-		StartAddress: number		= 0x008000;
-		MaxCycle: number		= 10000;
-		EmulationStopSTP: boolean	= true;
-		EmulationStopWAI: boolean	= false;
-		EmulationStopBRK: boolean	= false;
-		EmulationStopCOP: boolean	= false;
-		EmulationStopWDM: boolean	= false;
-
-		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
-			switch(instruction){
-				case Emulator.Instruction.STP:	return this.EmulationStopSTP;
-				case Emulator.Instruction.WAI:	return this.EmulationStopWAI;
-				case Emulator.Instruction.BRK:	return this.EmulationStopBRK;
-				case Emulator.Instruction.COP:	return this.EmulationStopCOP;
-				case Emulator.Instruction.WDM:	return this.EmulationStopWDM;
+			if(key.indexOf('Arrow') === 0){
+				return true;
+			}
+			if(key.match(/^F\d+$/i)){
+				return true;
 			}
 			return false;
+		}
+
+		// Input in integer format
+		public static IntegerInput(element: HTMLInputElement){
+			element.addEventListener('keydown', (e: KeyboardEvent) => {
+				DomUtility.IntegerInputKeydownEvent(element, e);
+			});
+			element.addEventListener('change', (e: Event) => {
+				DomUtility.IntegerInputChangeEvent(element);
+			});
+			DomUtility.IntegerInputChangeEvent(element);
+		}
+		private static IntegerInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+			const key	= e.key;
+			if(e.getModifierState("Control")){
+				return;
+			}
+			else if(DomUtility.FormattedInputSkipKey(key)){
+				return;
+			}
+			else if(key.length > 1){
+				e.preventDefault();
+			}
+
+			const match	= key.match(/^\d$/i);
+			if(!match){
+				e.preventDefault();
+			}
+		}
+		private static IntegerInputChangeEvent(obj: HTMLInputElement){
+			const value	= obj.value;
+
+			const match	= value.match(/^[\d]+$/i);
+			if(match){
+				const converted		= parseInt(match[0]);
+				obj.setAttribute('_previous', converted.toString());
+			}
+			else{
+				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0') ?? 0;
+				const setValue		= Utility.Format.ToHexString(previousValue);
+				obj.value		= setValue;
+			}
+		}
+
+		// Input in hexadecimal format
+		public static HexadecimalInput(element: HTMLInputElement){
+			element.addEventListener('keydown', (e: KeyboardEvent) => {
+				DomUtility.HexadecimalInputKeydownEvent(element, e);
+			});
+			element.addEventListener('change', (e: Event) => {
+				DomUtility.HexadecimalInputChangeEvent(element);
+			});
+			DomUtility.HexadecimalInputChangeEvent(element);
+		}
+		private static HexadecimalInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+			const key	= e.key;
+			if(e.getModifierState("Control")){
+				return;
+			}
+			else if(DomUtility.FormattedInputSkipKey(key)){
+				return;
+			}
+			else if(key.length > 1){
+				e.preventDefault();
+			}
+
+			const match	= key.match(/^[\dA-F]$/i);
+			if(!match){
+				e.preventDefault();
+			}
+		}
+		private static HexadecimalInputChangeEvent(obj: HTMLInputElement){
+			const value	= obj.value;
+			const digit	= parseInt(obj.getAttribute('maxlength') ?? '0') ?? 0;
+
+			const match	= value.match(/^[\dA-F]+$/i);
+			if(match){
+				const converted		= parseInt(match[0], 16);
+				obj.setAttribute('_previous', Utility.Format.ToHexString(converted, digit));
+			}
+			else{
+				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0', 16) ?? 0;
+				const setValue		= Utility.Format.ToHexString(previousValue, digit);
+				obj.value		= setValue;
+			}
 		}
 	}
 
