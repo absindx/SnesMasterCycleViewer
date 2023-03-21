@@ -22,3 +22,4 @@ This is **not** intended to emulate SNES perfectly.
 	* WRAM data
 	* ...
 * Manual
+* Mapping of execution address to input source line number

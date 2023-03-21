@@ -5166,8 +5166,6 @@ namespace Assembler{
 namespace Application{
 
 	export class Main{
-		private static readonly AssembleStartAddress		= 0x808000;	// FastROM area and address where RAM can be accessed for both LoROM and HiROM
-
 		private static Assembled: Assembler.DataChunk[] | null	= null;
 		private static Memory: Emulator.Memory			= new Emulator.Memory();
 		private static Cpu: Emulator.Cpu			= new Emulator.Cpu(this.Memory);
@@ -5211,6 +5209,9 @@ namespace Application{
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
 
+			Main.ClearResultViewer();
+			Main.UpdateSelectedViewer();
+
 			const setting	= Main.GetUrlParameter();
 			if(setting){
 				Main.SetSetting(setting);
@@ -5219,9 +5220,6 @@ namespace Application{
 					Main.Dom.AssembledRun.click();
 				}
 			}
-
-			Main.ClearResultViewer();
-			Main.UpdateSelectedViewer();
 
 			Main.Dom.ErrorMessage.classList.add('hide');
 		}
@@ -5244,6 +5242,7 @@ namespace Application{
 
 		public static Assemble(){
 			Main.Assembled	= null;
+			Main.ClearResultViewer();
 
 			// Setting from form
 			const setting		= Main.GetSetting();
@@ -5267,7 +5266,6 @@ namespace Application{
 			Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
 
 			Main.SetAssemblerError(true, []);
-			Main.ClearResultViewer();
 
 			Main.Assembled	= assembled;
 		}
@@ -5562,6 +5560,7 @@ namespace Application{
 		}
 
 		private static DumpCpuLog(cpu: Emulator.Cpu){
+			// for debug
 			for(let i = 0; i < cpu.Logs.length; i++){
 				const instructionLog	= cpu.Logs[i];
 				console.log(`[${i}] ${instructionLog.GetLogString()}`);
