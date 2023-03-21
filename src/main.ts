@@ -453,7 +453,7 @@ namespace Emulator{
 				const operand1			= (operand1High[0].Data << 8) | (operand1Low[0].Data);
 				const effectiveAddress		= cpu.Registers.ToProgramAddress(operand1);
 
-				log.Addressing			= Addressing.AbsoluteLong;	// disable memory access
+				log.Addressing			= Addressing.AbsoluteJump;
 				log.Operand1			= operand1;
 				log.EffectiveAddress		= effectiveAddress;
 
@@ -768,7 +768,15 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-														// 08: A (-> Implied)
+			function *AddressingAccumulator(){							// 08: A
+				calculateInstructionLength();
+
+				pushDummyAccess(AccessType.ReadDummy);
+
+				log.Addressing			= Addressing.Accumulator;
+
+				yield* instructionFunction[1];
+			}
 			function *AddressingXyc(){								// 09: xyc
 				// destination
 				const operand1Bank		= cpu.FetchProgramByte(AccessType.FetchOperand);
@@ -1642,7 +1650,7 @@ namespace Emulator{
 
 				log.Instruction			= Instruction.AND;
 			}
-			function *InstructionASLRegister(carry: boolean){
+			function *InstructionASLRegister(instruction: Instruction, carry: boolean){
 				const effectiveValue		= cpu.Registers.GetRegisterA();
 				const intCarry			= (carry)? 1 : 0;
 				let writeValue			= ((effectiveValue << 1) | intCarry) & cpu.Registers.GetMaskM();
@@ -1652,9 +1660,9 @@ namespace Emulator{
 
 				cpu.Registers.SetRegisterA(writeValue);
 
-				log.Instruction			= Instruction.ASL;
+				log.Instruction			= instruction;
 			}
-			function *InstructionASLMemory(carry: boolean){
+			function *InstructionASLMemory(instruction: Instruction, carry: boolean){
 				const effectiveAddress		= log.EffectiveAddress;
 				const effectiveValue		= log.EffectiveValue;
 				const intCarry			= (carry)? 1 : 0;
@@ -1671,7 +1679,7 @@ namespace Emulator{
 				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction			= Instruction.ASL;
+				log.Instruction			= instruction;
 			}
 			function *InstructionBIT(imm: boolean = false){
 				let readValue			= 0;
@@ -1870,7 +1878,7 @@ namespace Emulator{
 			function *InstructionLDY(imm: boolean = false){
 				yield* InstructionLoad(Instruction.LDY, imm, cpu.Registers.GetStatusFlagX(), 'Y');
 			}
-			function *InstructionLSRRegister(carry: boolean){
+			function *InstructionLSRRegister(instruction: Instruction, carry: boolean){
 				const effectiveValue		= cpu.Registers.GetRegisterA();
 				const intCarry			= (carry)? cpu.Registers.GetMsbMaskM() : 0;
 				let writeValue			= ((effectiveValue >> 1) | intCarry) & cpu.Registers.GetMaskM();
@@ -1880,9 +1888,9 @@ namespace Emulator{
 
 				cpu.Registers.SetRegisterA(writeValue);
 
-				log.Instruction			= Instruction.LSR;
+				log.Instruction			= instruction;
 			}
-			function *InstructionLSRMemory(carry: boolean){
+			function *InstructionLSRMemory(instruction: Instruction, carry: boolean){
 				const effectiveAddress		= log.EffectiveAddress;
 				const effectiveValue		= log.EffectiveValue;
 				const intCarry			= (carry)? cpu.Registers.GetMsbMaskM() : 0;
@@ -1899,7 +1907,7 @@ namespace Emulator{
 				const writeValueLow		= cpu.WriteDataByte(AccessType.Write, effectiveAddress + 0, writeValue);
 				log.AccessLog.push(writeValueLow[1]);
 
-				log.Instruction			= Instruction.LSR;
+				log.Instruction			= instruction;
 			}
 			function *InstructionORA(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -2151,15 +2159,15 @@ namespace Emulator{
 				[AddressingStackRel(),					InstructionORA()							],	// 03: ORA sr, S
 				[AddressingDpRmw(),					InstructionTSB()							],	// 04: TSB dp
 				[AddressingDp(),					InstructionORA()							],	// 05: ORA dp
-				[AddressingDpRmw(),					InstructionASLMemory(false)						],	// 06: ASL dp
+				[AddressingDpRmw(),					InstructionASLMemory(Instruction.ASL, false)				],	// 06: ASL dp
 				[AddressingDpIdrLong(),					InstructionORA()							],	// 07: ORA [dp]
 				[AddressingStackPush(regs.P, true),			InstructionDummy(Instruction.PHP)					],	// 08: PHP S
 				[AddressingImmediateMemory(),				InstructionORA(true)							],	// 09: ORA #immM
-				[AddressingImplied(),					InstructionASLRegister(false)						],	// 0A: ASL A
+				[AddressingAccumulator(),				InstructionASLRegister(Instruction.ASL, false)				],	// 0A: ASL A
 				[AddressingStackPush(regs.D, false),			InstructionDummy(Instruction.PHD)					],	// 0B: PHD S
 				[AddressingAbsRmw(),					InstructionTSB()							],	// 0C: TSB abs
 				[AddressingAbsDbr(),					InstructionORA()							],	// 0D: ORA abs
-				[AddressingAbsRmw(),					InstructionASLMemory(false)						],	// 0E: ASL abs
+				[AddressingAbsRmw(),					InstructionASLMemory(Instruction.ASL, false)				],	// 0E: ASL abs
 				[AddressingAbsLong(),					InstructionORA()							],	// 0F: ORA long
 				[AddressingRel(),					InstructionBranch(Instruction.BPL, !regs.GetStatusFlagN())		],	// 10: BPL rel
 				[AddressingDpIdrIdxY(false),				InstructionORA()							],	// 11: ORA (dp), Y
@@ -2167,15 +2175,15 @@ namespace Emulator{
 				[AddressingStackRelIdrIdxY(),				InstructionORA()							],	// 13: ORA (sr, S), Y
 				[AddressingDpRmw(),					InstructionTRB()							],	// 14: TRB dp
 				[AddressingDpIdxX(),					InstructionORA()							],	// 15: ORA dp, X
-				[AddressingDpIdxXRmw(),					InstructionASLMemory(false)						],	// 16: ASL dp, X
+				[AddressingDpIdxXRmw(),					InstructionASLMemory(Instruction.ASL, false)				],	// 16: ASL dp, X
 				[AddressingDpIdrLongIdxY(),				InstructionORA()							],	// 17: ORA [dp], Y
 				[AddressingImplied(),					InstructionClearFlag(Instruction.CLC, 0x01 /* nvmxdizC */)		],	// 18: CLC
 				[AddressingAbsIdxY(false),				InstructionORA()							],	// 19: ORA abs, Y
-				[AddressingImplied(),					InstructionINCRegister()						],	// 1A: INC A
+				[AddressingAccumulator(),				InstructionINCRegister()						],	// 1A: INC A
 				[AddressingImplied(),					InstructionTxx(Instruction.TCS, regs.GetRegisterA(true), 'S', null)	],	// 1B: TCS
 				[AddressingAbsRmw(),					InstructionTRB()							],	// 1C: TRB abs
 				[AddressingAbsIdxX(false),				InstructionORA()							],	// 1D: ORA abs, X
-				[AddressingAbsIdxXRmw(),				InstructionASLMemory(false)						],	// 1E: ASL abs, X
+				[AddressingAbsIdxXRmw(),				InstructionASLMemory(Instruction.ASL, false)				],	// 1E: ASL abs, X
 				[AddressingLongIdxX(),					InstructionORA()							],	// 1F: ORA long, X
 				[AddressingAbsPbr(true),				InstructionJSR(Instruction.JSR, false)					],	// 20: JSR abs
 				[AddressingDpIdxIdrX(),					InstructionAND()							],	// 21: AND (dp, X)
@@ -2183,15 +2191,15 @@ namespace Emulator{
 				[AddressingStackRel(),					InstructionAND()							],	// 23: AND sr, S
 				[AddressingDp(),					InstructionBIT()							],	// 24: BIT dp
 				[AddressingDp(),					InstructionAND()							],	// 25: AND dp
-				[AddressingDpRmw(),					InstructionASLMemory(regs.GetStatusFlagC())				],	// 26: ROL dp
+				[AddressingDpRmw(),					InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())		],	// 26: ROL dp
 				[AddressingDpIdrLong(),					InstructionAND()							],	// 27: AND [dp]
 				[AddressingStackPull(true),				InstructionSetRegister(Instruction.PLP, 'P')				],	// 28: PLP S
 				[AddressingImmediateMemory(),				InstructionAND(true)							],	// 29: AND #immM
-				[AddressingImplied(),					InstructionASLRegister(regs.GetStatusFlagC())				],	// 2A: ROL A
+				[AddressingAccumulator(),				InstructionASLRegister(Instruction.ROL, regs.GetStatusFlagC())		],	// 2A: ROL A
 				[AddressingStackPull(false),				InstructionSetRegister(Instruction.PLD, 'D')				],	// 2B: PLD S
 				[AddressingAbsDbr(),					InstructionBIT()							],	// 2C: BIT abs
 				[AddressingAbsDbr(),					InstructionAND()							],	// 2D: AND abs
-				[AddressingAbsRmw(),					InstructionASLMemory(regs.GetStatusFlagC())				],	// 2E: ROL abs
+				[AddressingAbsRmw(),					InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())		],	// 2E: ROL abs
 				[AddressingAbsLong(),					InstructionAND()							],	// 2F: AND long
 				[AddressingRel(),					InstructionBranch(Instruction.BMI, regs.GetStatusFlagN())		],	// 30: BMI rel
 				[AddressingDpIdrIdxY(false),				InstructionAND()							],	// 31: AND (dp), Y
@@ -2199,15 +2207,15 @@ namespace Emulator{
 				[AddressingStackRelIdrIdxY(),				InstructionAND()							],	// 33: AND (sr, S), Y
 				[AddressingDpRmw(),					InstructionBIT()							],	// 34: BIT dp
 				[AddressingDpIdxX(),					InstructionAND()							],	// 35: AND dp, X
-				[AddressingDpIdxXRmw(),					InstructionASLMemory(regs.GetStatusFlagC())				],	// 36: ROL dp, X
+				[AddressingDpIdxXRmw(),					InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())		],	// 36: ROL dp, X
 				[AddressingDpIdrLongIdxY(),				InstructionAND()							],	// 37: AND [dp], Y
 				[AddressingImplied(),					InstructionSetFlag(Instruction.SEC, 0x01 /* nvmxdizC */)		],	// 38: SEC
 				[AddressingAbsIdxY(false),				InstructionAND()							],	// 39: AND abs, Y
-				[AddressingImplied(),					InstructionDECRegister()						],	// 3A: DEC A
+				[AddressingAccumulator(),				InstructionDECRegister()						],	// 3A: DEC A
 				[AddressingImplied(),					InstructionTxx(Instruction.TSC, regs.S, 'C', false)			],	// 3B: TSC
 				[AddressingAbsRmw(),					InstructionBIT()							],	// 3C: BIT abs
 				[AddressingAbsIdxX(false),				InstructionAND()							],	// 3D: AND abs, X
-				[AddressingAbsIdxXRmw(),				InstructionASLMemory(regs.GetStatusFlagC())				],	// 3E: ROL abs, X
+				[AddressingAbsIdxXRmw(),				InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())		],	// 3E: ROL abs, X
 				[AddressingLongIdxX(),					InstructionAND()							],	// 3F: AND long, X
 				[AddressingStackReturnInterrupt(),			InstructionJump(Instruction.RTI, 0)					],	// 40: RTI S
 				[AddressingDpIdxIdrX(),					InstructionEOR()							],	// 41: EOR (dp, X)
@@ -2215,15 +2223,15 @@ namespace Emulator{
 				[AddressingStackRel(),					InstructionEOR()							],	// 43: EOR sr, S
 				[AddressingXyc(),					InstructionBlockMove(Instruction.MVP, 1)				],	// 44: MVP xyc
 				[AddressingDp(),					InstructionEOR()							],	// 45: EOR dp
-				[AddressingDpRmw(),					InstructionLSRMemory(false)						],	// 46: LSR dp
+				[AddressingDpRmw(),					InstructionLSRMemory(Instruction.LSR, false)				],	// 46: LSR dp
 				[AddressingDpIdrLong(),					InstructionEOR()							],	// 47: EOR [dp]
 				[AddressingStackPush(regs.GetRegisterA(), flagM),	InstructionDummy(Instruction.PHA)					],	// 48: PHA S
 				[AddressingImmediateMemory(),				InstructionEOR(true)							],	// 49: EOR #immM
-				[AddressingImplied(),					InstructionLSRRegister(false)						],	// 4A: LSR A
+				[AddressingAccumulator(),				InstructionLSRRegister(Instruction.LSR, false)				],	// 4A: LSR A
 				[AddressingStackPush(regs.PB, true),			InstructionDummy(Instruction.PHK)					],	// 4B: PHK S
 				[AddressingAbsPbr(false),				InstructionJump(Instruction.JMP, 0)					],	// 4C: JMP abs
 				[AddressingAbsDbr(),					InstructionEOR()							],	// 4D: EOR abs
-				[AddressingAbsRmw(),					InstructionLSRMemory(false)						],	// 4E: LSR abs
+				[AddressingAbsRmw(),					InstructionLSRMemory(Instruction.LSR, false)				],	// 4E: LSR abs
 				[AddressingAbsLong(),					InstructionEOR()							],	// 4F: EOR long
 				[AddressingRel(),					InstructionBranch(Instruction.BVC, !regs.GetStatusFlagV())		],	// 50: BVC rel
 				[AddressingDpIdrIdxY(false),				InstructionEOR()							],	// 51: EOR (dp), Y
@@ -2231,15 +2239,15 @@ namespace Emulator{
 				[AddressingStackRelIdrIdxY(),				InstructionEOR()							],	// 53: EOR (sr, S), Y
 				[AddressingXyc(),					InstructionBlockMove(Instruction.MVN, -1)				],	// 54: MVN xyc
 				[AddressingDpIdxX(),					InstructionEOR()							],	// 55: EOR dp, X
-				[AddressingDpIdxXRmw(),					InstructionLSRMemory(false)						],	// 56: LSR dp, X
+				[AddressingDpIdxXRmw(),					InstructionLSRMemory(Instruction.LSR, false)				],	// 56: LSR dp, X
 				[AddressingDpIdrLongIdxY(),				InstructionEOR()							],	// 57: EOR [dp], Y
 				[AddressingImplied(),					InstructionClearFlag(Instruction.CLI, 0x04 /* nvmxdIzc */)		],	// 58: CLI
 				[AddressingAbsIdxY(false),				InstructionEOR()							],	// 59: EOR abs, Y
 				[AddressingStackPush(regs.GetRegisterY(), flagX),	InstructionDummy(Instruction.PHY)					],	// 5A: PHY S
 				[AddressingImplied(),					InstructionTxx(Instruction.TCD, regs.GetRegisterA(true), 'D', false)	],	// 5B: TCD
-				[AddressingAbsLong(),					InstructionJump(Instruction.JMP, 0)					],	// 5C: JML long
+				[AddressingAbsLong(),					InstructionJump(Instruction.JML, 0)					],	// 5C: JML long
 				[AddressingAbsIdxX(false),				InstructionEOR()							],	// 5D: EOR abs, X
-				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(false)						],	// 5E: LSR abs, X
+				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(Instruction.LSR, false)				],	// 5E: LSR abs, X
 				[AddressingLongIdxX(),					InstructionEOR()							],	// 5F: EOR long, X
 				[AddressingStackReturn(true),				InstructionJump(Instruction.RTS, 1)					],	// 60: RTS S
 				[AddressingDpIdxIdrX(),					InstructionADC()							],	// 61: ADC (dp, X)
@@ -2247,15 +2255,15 @@ namespace Emulator{
 				[AddressingStackRel(),					InstructionADC()							],	// 63: ADC sr, S
 				[AddressingDp(),					InstructionSTZ()							],	// 64: STZ dp
 				[AddressingDp(),					InstructionADC()							],	// 65: ADC dp
-				[AddressingDpRmw(),					InstructionLSRMemory(regs.GetStatusFlagC())				],	// 66: ROR dp
+				[AddressingDpRmw(),					InstructionLSRMemory(Instruction.ROR, regs.GetStatusFlagC())		],	// 66: ROR dp
 				[AddressingDpIdrLong(),					InstructionADC()							],	// 67: ADC [dp]
 				[AddressingStackPull(flagM),				InstructionSetRegister(Instruction.PLA, 'A')				],	// 68: PLA S
 				[AddressingImmediateMemory(),				InstructionADC(true)							],	// 69: ADC #immM
-				[AddressingImplied(),					InstructionLSRRegister(regs.GetStatusFlagC())				],	// 6A: ROR A
+				[AddressingAccumulator(),				InstructionLSRRegister(Instruction.ROR, regs.GetStatusFlagC())		],	// 6A: ROR A
 				[AddressingStackReturn(false),				InstructionJump(Instruction.RTL, 1)					],	// 6B: RTL S
 				[AddressingAbsIdrJump(true),				InstructionJump(Instruction.JMP, 0)					],	// 6C: JMP (abs)
 				[AddressingAbsDbr(),					InstructionADC()							],	// 6D: ADC abs
-				[AddressingAbsRmw(),					InstructionLSRMemory(regs.GetStatusFlagC())				],	// 6E: ROR abs
+				[AddressingAbsRmw(),					InstructionLSRMemory(Instruction.ROR, regs.GetStatusFlagC())		],	// 6E: ROR abs
 				[AddressingAbsLong(),					InstructionADC()							],	// 6F: ADC long
 				[AddressingRel(),					InstructionBranch(Instruction.BVC, regs.GetStatusFlagV())		],	// 70: BVS rel
 				[AddressingDpIdrIdxY(false),				InstructionADC()							],	// 71: ADC (dp), Y
@@ -2263,7 +2271,7 @@ namespace Emulator{
 				[AddressingStackRelIdrIdxY(),				InstructionADC()							],	// 73: ADC (sr, S), Y
 				[AddressingDpIdxX(),					InstructionSTZ()							],	// 74: STZ dp, X
 				[AddressingDpIdxX(),					InstructionADC()							],	// 75: ADC dp, X
-				[AddressingDpIdxXRmw(),					InstructionLSRMemory(regs.GetStatusFlagC())				],	// 76: ROR dp, X
+				[AddressingDpIdxXRmw(),					InstructionLSRMemory(Instruction.ROR, regs.GetStatusFlagC())		],	// 76: ROR dp, X
 				[AddressingDpIdrLongIdxY(),				InstructionADC()							],	// 77: ADC [dp], Y
 				[AddressingImplied(),					InstructionSetFlag(Instruction.SEI, 0x04 /* nvmxdIzc */)		],	// 78: SEI
 				[AddressingAbsIdxY(false),				InstructionADC()							],	// 79: ADC abs, Y
@@ -2271,7 +2279,7 @@ namespace Emulator{
 				[AddressingImplied(),					InstructionTxx(Instruction.TDC, regs.D, 'C', false)			],	// 7B: TDC
 				[AddressingAbsIdxIdrX(false),				InstructionJump(Instruction.JMP, 0)					],	// 7C: JMP (abs. X)
 				[AddressingAbsIdxX(false),				InstructionADC()							],	// 7D: ADC abs, X
-				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(regs.GetStatusFlagC())				],	// 7E: ROR abs, X
+				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(Instruction.ROR, regs.GetStatusFlagC())		],	// 7E: ROR abs, X
 				[AddressingLongIdxX(),					InstructionADC()							],	// 7F: ADC long, X
 				[AddressingRel(),					InstructionBranch(Instruction.BRA, true)				],	// 80: BRA rel
 				[AddressingDpIdxIdrX(),					InstructionSTA()							],	// 81: STA (dp, X)
@@ -2365,7 +2373,7 @@ namespace Emulator{
 				[AddressingAbsIdxY(false),				InstructionCMP()							],	// D9: CMP abs, Y
 				[AddressingStackPush(regs.GetRegisterX(), flagX),	InstructionDummy(Instruction.PHX)					],	// DA: PHX
 				[AddressingImplied(),					InstructionSTP()							],	// DB: STP
-				[AddressingAbsIdrJump(false),				InstructionJump(Instruction.JMP, 0)					],	// DC: JML [abs]
+				[AddressingAbsIdrJump(false),				InstructionJump(Instruction.JML, 0)					],	// DC: JML [abs]
 				[AddressingAbsIdxX(false),				InstructionCMP()							],	// DD: CMP abs, X
 				[AddressingAbsIdxX(false),				InstructionDECMemory()							],	// DE: DEC abs, X
 				[AddressingLongIdxX(),					InstructionCMP()							],	// DF: CMP long, X
@@ -3265,6 +3273,7 @@ namespace Emulator{
 		DirectpageIndirectLong,			// [dp]
 		DirectpageIndirectLongIndexedY,		// [dp],Y
 		Absolute,				// abs
+		AbsoluteJump,				// abs (Jump, no referrer)
 		AbsoluteIndexedX,			// abs,X
 		AbsoluteIndexedY,			// abs,Y
 		AbsoluteIndirect,			// (abs)
@@ -3306,6 +3315,7 @@ namespace Emulator{
 		1 + 1,	// Instruction.DirectpageIndirectLong
 		1 + 1,	// Instruction.DirectpageIndirectLongIndexedY
 		1 + 2,	// Instruction.Absolute
+		1 + 2,	// Instruction.AbsoluteJump
 		1 + 2,	// Instruction.AbsoluteIndexedX
 		1 + 2,	// Instruction.AbsoluteIndexedY
 		1 + 2,	// Instruction.AbsoluteIndirect
@@ -3320,114 +3330,114 @@ namespace Emulator{
 		1 + 2,	// Instruction.BlockMove
 	];
 	export const InstructionTable: {[Instruction: string]: (number | null)[]}	= {
-	//     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,Y       (abs,X)     long        rel         sr,S        xyc    	   Flags
-	//                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y
-		'ADC': [ null, null, null, null, 0x69, null, 0x65, 0x75, null, 0x72, 0x61, 0x71, 0x67, 0x77, 0x6D, 0x7D, 0x79, null, null, null, 0x6F, 0x7F, null, null, 0x63, 0x73, null ],	// NV----ZC
-		'AND': [ null, null, null, null, 0x29, null, 0x25, 0x35, null, 0x32, 0x21, 0x31, 0x27, 0x37, 0x2D, 0x3D, 0x39, null, null, null, 0x2F, 0x3F, null, null, 0x23, 0x33, null ],	// N-----Z-
-		'ASL': [ null, 0x0A, null, null, null, null, 0x06, 0x16, null, null, null, null, null, null, 0x0E, 0x1E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
-		'BCC': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null ],	// --------
-		'BCS': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null ],	// --------
-		'BEQ': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xF0, null, null, null, null ],	// --------
-	//	'BGE': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null ],	// --------
-		'BIT': [ null, null, null, null, 0x89, null, 0x24, 0x34, null, null, null, null, null, null, 0x2C, 0x3C, null, null, null, null, null, null, null, null, null, null, null ],	// NV----Z- / #imm : ------Z-
-	//	'BLT': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null ],	// --------
-		'BMI': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x30, null, null, null, null ],	// --------
-		'BNE': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xD0, null, null, null, null ],	// --------
-		'BPL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x10, null, null, null, null ],	// --------
-		'BRA': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x80, null, null, null, null ],	// --------
-	//	'BRK': [ null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
-		'BRK': [ null, null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
-		'BRL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x82, null, null, null ],	// --------
-		'BVC': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x50, null, null, null, null ],	// --------
-		'BVS': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x70, null, null, null, null ],	// --------
-		'CLC': [ 0x18, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C
-		'CLD': [ 0xD8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----D---
-		'CLI': [ 0x58, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -----I--
-		'CLV': [ 0xB8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -V------
-	//	'CMA': [ null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
-		'CMP': [ null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
-	//	'COP': [ null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
-		'COP': [ null, null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
-		'CPX': [ null, null, null, null, null, 0xE0, 0xE4, null, null, null, null, null, null, null, 0xEC, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
-		'CPY': [ null, null, null, null, null, 0xC0, 0xC4, null, null, null, null, null, null, null, 0xCC, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
-	//	'DEA': [ null, 0x3A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'DEC': [ null, 0x3A, null, null, null, null, 0xC6, 0xD6, null, null, null, null, null, null, 0xCE, 0xDE, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'DEX': [ 0xCA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'DEY': [ 0x88, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'EOR': [ null, null, null, null, 0x49, null, 0x45, 0x55, null, 0x52, 0x41, 0x51, 0x47, 0x57, 0x4D, 0x5D, 0x59, null, null, null, 0x4F, 0x5F, null, null, 0x43, 0x53, null ],	// N-----Z-
-	//	'INA': [ null, 0x1A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'INC': [ null, 0x1A, null, null, null, null, 0xE6, 0xF6, null, null, null, null, null, null, 0xEE, 0xFE, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'INX': [ 0xE8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'INY': [ 0xC8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'JML': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xDC, 0x5C, null, null, null, null, null, null ],	// --------
-	//	'JMP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, 0x6C, 0x7C, 0xDC, 0x5C, null, null, null, null, null, null ],	// --------
-		'JMP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, 0x6C, 0x7C, null, null, null, null, null, null, null, null ],	// --------
-		'JSL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x22, null, null, null, null, null, null ],	// --------
-	//	'JSR': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, 0xFC, null, 0x22, null, null, null, null, null, null ],	// --------
-		'JSR': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, 0xFC, null, null, null, null, null, null, null, null ],	// --------
-		'LDA': [ null, null, null, null, 0xA9, null, 0xA5, 0xB5, null, 0xB2, 0xA1, 0xB1, 0xA7, 0xB7, 0xAD, 0xBD, 0xB9, null, null, null, 0xAF, 0xBF, null, null, 0xA3, 0xB3, null ],	// N-----Z-
-		'LDX': [ null, null, null, null, null, 0xA2, 0xA6, null, 0xB6, null, null, null, null, null, 0xAE, null, 0xBE, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'LDY': [ null, null, null, null, null, 0xA0, 0xA4, 0xB4, null, null, null, null, null, null, 0xAC, 0xBC, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'LSR': [ null, 0x4A, null, null, null, null, 0x46, 0x56, null, null, null, null, null, null, 0x4E, 0x5E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
-		'MVN': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x54 ],	// --------
-		'MVP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x44 ],	// --------
-		'NOP': [ 0xEA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'ORA': [ null, null, null, null, 0x09, null, 0x05, 0x15, null, 0x12, 0x01, 0x11, 0x07, 0x17, 0x0D, 0x1D, 0x19, null, null, null, 0x0F, 0x1F, null, null, 0x03, 0x13, null ],	// N-----Z-
-		'PEA': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xF4, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PEI': [ null, null, null, null, null, null, null, null, null, 0xD4, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PER': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x62, null, null, null ],	// --------
-		'PHA': [ null, null, 0x48, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHB': [ null, null, 0x8B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHD': [ null, null, 0x0B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHK': [ null, null, 0x4B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHP': [ null, null, 0x08, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHX': [ null, null, 0xDA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PHY': [ null, null, 0x5A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'PLA': [ null, null, 0x68, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'PLB': [ null, null, 0xAB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'PLD': [ null, null, 0x2B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'PLP': [ null, null, 0x28, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
-		'PLX': [ null, null, 0xFA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'PLY': [ null, null, 0x7A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'REP': [ null, null, null, 0xC2, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
-		'ROL': [ null, 0x2A, null, null, null, null, 0x26, 0x36, null, null, null, null, null, null, 0x2E, 0x3E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'ROR': [ null, 0x6A, null, null, null, null, 0x66, 0x76, null, null, null, null, null, null, 0x6E, 0x7E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'RTI': [ null, null, 0x40, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
-		'RTL': [ null, null, 0x6B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'RTS': [ null, null, 0x60, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'SBC': [ null, null, null, null, 0xE9, null, 0xE5, 0xF5, null, 0xF2, 0xE1, 0xF1, 0xE7, 0xF7, 0xED, 0xFD, 0xF9, null, null, null, 0xEF, 0xFF, null, null, 0xE3, 0xF3, null ],	// N-----ZC
-		'SEC': [ 0x38, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C
-		'SED': [ 0xF8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----D---
-		'SEI': [ 0x78, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -----I--
-		'SEP': [ null, null, null, 0xE2, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
-		'STA': [ null, null, null, null, null, null, 0x85, 0x95, null, 0x92, 0x81, 0x91, 0x87, 0x97, 0x8D, 0x9D, 0x99, null, null, null, 0x8F, 0x9F, null, null, 0x83, 0x93, null ],	// --------
-		'STP': [ 0xDB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'STX': [ null, null, null, null, null, null, 0x86, null, 0x96, null, null, null, null, null, 0x8E, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'STY': [ null, null, null, null, null, null, 0x84, 0x94, null, null, null, null, null, null, 0x8C, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'STZ': [ null, null, null, null, null, null, 0x64, 0x74, null, null, null, null, null, null, 0x9C, 0x9E, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-	//	'SWA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-	//	'TAD': [ 0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-	//	'TAS': [ 0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'TAX': [ 0xAA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TAY': [ 0xA8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TCD': [ 0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TCS': [ 0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-	//	'TDA': [ 0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TDC': [ 0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TRB': [ null, null, null, null, null, null, 0x14, null, null, null, null, null, null, null, 0x1C, null, null, null, null, null, null, null, null, null, null, null, null ],	// ------Z-
-		'TSB': [ null, null, null, null, null, null, 0x04, null, null, null, null, null, null, null, 0x0C, null, null, null, null, null, null, null, null, null, null, null, null ],	// ------Z-
-	//	'TSA': [ 0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TSC': [ 0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TSX': [ 0xBA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TXA': [ 0x8A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TXS': [ 0x9A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'TXY': [ 0x9B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TYA': [ 0x98, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'TYX': [ 0xBB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'WAI': [ 0xCB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'WDM': [ null, null, null, 0x42, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
-		'XBA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
-		'XCE': [ 0xFB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C (C=E, E=C)
+	//     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y  	           Flags
+	//                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      absJ        abs,Y       (abs,X)     long        rel         sr,S        xyc
+		'ADC': [ null, null, null, null, 0x69, null, 0x65, 0x75, null, 0x72, 0x61, 0x71, 0x67, 0x77, 0x6D, null, 0x7D, 0x79, null, null, null, 0x6F, 0x7F, null, null, 0x63, 0x73, null ],	// NV----ZC
+		'AND': [ null, null, null, null, 0x29, null, 0x25, 0x35, null, 0x32, 0x21, 0x31, 0x27, 0x37, 0x2D, null, 0x3D, 0x39, null, null, null, 0x2F, 0x3F, null, null, 0x23, 0x33, null ],	// N-----Z-
+		'ASL': [ null, 0x0A, null, null, null, null, 0x06, 0x16, null, null, null, null, null, null, 0x0E, null, 0x1E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
+		'BCC': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null ],	// --------
+		'BCS': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null ],	// --------
+		'BEQ': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xF0, null, null, null, null ],	// --------
+	//	'BGE': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null ],	// --------
+		'BIT': [ null, null, null, null, 0x89, null, 0x24, 0x34, null, null, null, null, null, null, 0x2C, null, 0x3C, null, null, null, null, null, null, null, null, null, null, null ],	// NV----Z- / #imm : ------Z-
+	//	'BLT': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null ],	// --------
+		'BMI': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x30, null, null, null, null ],	// --------
+		'BNE': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xD0, null, null, null, null ],	// --------
+		'BPL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x10, null, null, null, null ],	// --------
+		'BRA': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x80, null, null, null, null ],	// --------
+	//	'BRK': [ null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
+		'BRK': [ null, null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
+		'BRL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x82, null, null, null ],	// --------
+		'BVC': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x50, null, null, null, null ],	// --------
+		'BVS': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x70, null, null, null, null ],	// --------
+		'CLC': [ 0x18, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C
+		'CLD': [ 0xD8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----D---
+		'CLI': [ 0x58, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -----I--
+		'CLV': [ 0xB8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -V------
+	//	'CMA': [ null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, null, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
+		'CMP': [ null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, null, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
+	//	'COP': [ null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
+		'COP': [ null, null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
+		'CPX': [ null, null, null, null, null, 0xE0, 0xE4, null, null, null, null, null, null, null, 0xEC, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
+		'CPY': [ null, null, null, null, null, 0xC0, 0xC4, null, null, null, null, null, null, null, 0xCC, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
+	//	'DEA': [ null, 0x3A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'DEC': [ null, 0x3A, null, null, null, null, 0xC6, 0xD6, null, null, null, null, null, null, 0xCE, null, 0xDE, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'DEX': [ 0xCA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'DEY': [ 0x88, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'EOR': [ null, null, null, null, 0x49, null, 0x45, 0x55, null, 0x52, 0x41, 0x51, 0x47, 0x57, 0x4D, null, 0x5D, 0x59, null, null, null, 0x4F, 0x5F, null, null, 0x43, 0x53, null ],	// N-----Z-
+	//	'INA': [ null, 0x1A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'INC': [ null, 0x1A, null, null, null, null, 0xE6, 0xF6, null, null, null, null, null, null, 0xEE, null, 0xFE, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'INX': [ 0xE8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'INY': [ 0xC8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'JML': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xDC, 0x5C, null, null, null, null, null, null ],	// --------
+	//	'JMP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, null, 0x6C, 0x7C, 0xDC, 0x5C, null, null, null, null, null, null ],	// --------
+		'JMP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, null, 0x6C, 0x7C, null, null, null, null, null, null, null, null ],	// --------
+		'JSL': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x22, null, null, null, null, null, null ],	// --------
+	//	'JSR': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, null, 0xFC, null, 0x22, null, null, null, null, null, null ],	// --------
+		'JSR': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, null, 0xFC, null, null, null, null, null, null, null, null ],	// --------
+		'LDA': [ null, null, null, null, 0xA9, null, 0xA5, 0xB5, null, 0xB2, 0xA1, 0xB1, 0xA7, 0xB7, 0xAD, null, 0xBD, 0xB9, null, null, null, 0xAF, 0xBF, null, null, 0xA3, 0xB3, null ],	// N-----Z-
+		'LDX': [ null, null, null, null, null, 0xA2, 0xA6, null, 0xB6, null, null, null, null, null, 0xAE, null, null, 0xBE, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'LDY': [ null, null, null, null, null, 0xA0, 0xA4, 0xB4, null, null, null, null, null, null, 0xAC, null, 0xBC, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'LSR': [ null, 0x4A, null, null, null, null, 0x46, 0x56, null, null, null, null, null, null, 0x4E, null, 0x5E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----ZC
+		'MVN': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x54 ],	// --------
+		'MVP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x44 ],	// --------
+		'NOP': [ 0xEA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'ORA': [ null, null, null, null, 0x09, null, 0x05, 0x15, null, 0x12, 0x01, 0x11, 0x07, 0x17, 0x0D, null, 0x1D, 0x19, null, null, null, 0x0F, 0x1F, null, null, 0x03, 0x13, null ],	// N-----Z-
+		'PEA': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xF4, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PEI': [ null, null, null, null, null, null, null, null, null, 0xD4, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PER': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x62, null, null, null ],	// --------
+		'PHA': [ null, null, 0x48, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHB': [ null, null, 0x8B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHD': [ null, null, 0x0B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHK': [ null, null, 0x4B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHP': [ null, null, 0x08, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHX': [ null, null, 0xDA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PHY': [ null, null, 0x5A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'PLA': [ null, null, 0x68, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'PLB': [ null, null, 0xAB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'PLD': [ null, null, 0x2B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'PLP': [ null, null, 0x28, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
+		'PLX': [ null, null, 0xFA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'PLY': [ null, null, 0x7A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'REP': [ null, null, null, 0xC2, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
+		'ROL': [ null, 0x2A, null, null, null, null, 0x26, 0x36, null, null, null, null, null, null, 0x2E, null, 0x3E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'ROR': [ null, 0x6A, null, null, null, null, 0x66, 0x76, null, null, null, null, null, null, 0x6E, null, 0x7E, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'RTI': [ null, null, 0x40, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
+		'RTL': [ null, null, 0x6B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'RTS': [ null, null, 0x60, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'SBC': [ null, null, null, null, 0xE9, null, 0xE5, 0xF5, null, 0xF2, 0xE1, 0xF1, 0xE7, 0xF7, 0xED, null, 0xFD, 0xF9, null, null, null, 0xEF, 0xFF, null, null, 0xE3, 0xF3, null ],	// N-----ZC
+		'SEC': [ 0x38, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C
+		'SED': [ 0xF8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----D---
+		'SEI': [ 0x78, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -----I--
+		'SEP': [ null, null, null, 0xE2, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// NVMXDIZC
+		'STA': [ null, null, null, null, null, null, 0x85, 0x95, null, 0x92, 0x81, 0x91, 0x87, 0x97, 0x8D, null, 0x9D, 0x99, null, null, null, 0x8F, 0x9F, null, null, 0x83, 0x93, null ],	// --------
+		'STP': [ 0xDB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'STX': [ null, null, null, null, null, null, 0x86, null, 0x96, null, null, null, null, null, 0x8E, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'STY': [ null, null, null, null, null, null, 0x84, 0x94, null, null, null, null, null, null, 0x8C, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'STZ': [ null, null, null, null, null, null, 0x64, 0x74, null, null, null, null, null, null, 0x9C, null, 0x9E, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+	//	'SWA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+	//	'TAD': [ 0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+	//	'TAS': [ 0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'TAX': [ 0xAA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TAY': [ 0xA8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TCD': [ 0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TCS': [ 0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+	//	'TDA': [ 0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TDC': [ 0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TRB': [ null, null, null, null, null, null, 0x14, null, null, null, null, null, null, null, 0x1C, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ------Z-
+		'TSB': [ null, null, null, null, null, null, 0x04, null, null, null, null, null, null, null, 0x0C, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ------Z-
+	//	'TSA': [ 0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TSC': [ 0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TSX': [ 0xBA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TXA': [ 0x8A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TXS': [ 0x9A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'TXY': [ 0x9B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TYA': [ 0x98, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'TYX': [ 0xBB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'WAI': [ 0xCB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'WDM': [ null, null, null, 0x42, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
+		'XBA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+		'XCE': [ 0xFB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// -------C (C=E, E=C)
 	};
 
 	export function GetInstructionLength(addressing: Addressing, flagM: boolean, flagX: boolean): number {
@@ -3498,6 +3508,7 @@ namespace Emulator{
 				`[$${strOpr1B}] @ ${strIndAccess}`,						// [dp]
 				`[$${strOpr1B}], Y @ ${strIndAccess}`,						// [dp],Y
 				`$${strOpr1W} @ ${strLngAccess}`,						// abs
+				`$${strOpr1W}`,									// absJ
 				`$${strOpr1W}, X @ ${strLngAccess}`,						// abs,X
 				`$${strOpr1W}, Y @ ${strLngAccess}`,						// abs,Y
 				`($${strOpr1W}) @ ${strIndAccess}`,						// (abs)
@@ -4174,6 +4185,7 @@ namespace Assembler{
 
 				case Emulator.Addressing.Directpage:				// dp
 				case Emulator.Addressing.Absolute:				// abs
+				case Emulator.Addressing.AbsoluteJump:				// absJ
 				case Emulator.Addressing.AbsoluteLong:				// long
 					valid	= this.DetermineInstructionAddressing(instruction,
 						Emulator.Addressing.Directpage,
@@ -4511,6 +4523,7 @@ namespace Assembler{
 				}
 
 				case Emulator.Addressing.Absolute:				// abs
+				case Emulator.Addressing.AbsoluteJump:				// absJ
 				case Emulator.Addressing.AbsoluteIndexedX:			// abs,X
 				case Emulator.Addressing.AbsoluteIndexedY:			// abs,Y
 				case Emulator.Addressing.AbsoluteIndirect:			// (abs)
