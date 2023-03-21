@@ -5,18 +5,146 @@
   <title>SNES master cycle viewer</title>
   <!-- <link rel="shortcut icon" href="favicon.ico"> -->
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js"></script>
  </head>
  <body>
   <header>
    <h1>SNES master cycle viewer</h1>
   </header>
   <main>
+   <section id="ErrorMessage">
+    <p>
+     System initialization failed.
+    </p>
+   </section>
+   <section id="Setting">
+    <h2>Setting</h2>
+    <form id="SettingForm" autocomplete="off">
+     <fieldset>
+      <legend>Setting</legend>
+      <dl>
+       <dt>ROM mapping</dt><dd
+       > <label><input type="radio" name="mapping" value="lorom" checked	>LoROM</input></label
+       > <label><input type="radio" name="mapping" value="hirom"		       >HiROM</input></label
+       ></dd>
+       <dt>FastROM</dt><dd
+       > <label><input type="checkbox" name="fastrom">Enable FastROM (<code class="inline">MEMSEL.bit0 = 1</code>)</input></label
+       ></dd>
+       <dt>Status flag</dt><dd
+       > <label><input type="checkbox" name="eflag">Emulation flag</input></label
+       ></dd>
+       <dt>Start address</dt><dd
+       > <label>$ <input type="text" name="startpc" class="hexinput" maxlength="6" value="008000"></input></label
+       ></dd>
+       <dt>Max cycle</dt><dd
+       > <label><input type="number" name="cycle" class="intinput" min="0" step="100" value="10000"></input></label
+       ></dd>
+       <dt>Emulation stop</dt><dd
+       > <label><input type="checkbox" name="stops" checked disabled>$DB STP</input></label
+       > <label><input type="checkbox" name="stopw">$CB WAI</input></label
+       > <label><input type="checkbox" name="stopb">$00 BRK</input></label
+       > <label><input type="checkbox" name="stopc">$02 COP</input></label
+       > <label><input type="checkbox" name="stopr">$42 WDM</input></label
+       ></dd>
+      </dl>
+     </fieldset>
+    </form>
+   </section>
+   <section id="Assembler">
+    <h2>Assembler</h2>
+    <article>
+     <div id="AssemblerContainer">
+
+      <div id="AssemblerMain">
+       <h3>Input source</h3>
+       <textarea id="AssemblerSource" rows="16">		.m8 .i8
+Start:		LDA	#$55
+		STA	$00
+		LDX	#$08
+.Loop		LSR	$00
+		ROL
+		DEX
+		BNE	.Loop
+		STP		; stop emulation
+</textarea>
+       <h3>Output log</h3>
+       <textarea id="AssemblerOutput" readonly rows="8"></textarea>
+      </div>
+      <div id="AssemblerHexfile">
+       <div id="AssemblerHexfileIHex">
+        <h3>Intel HEX</h3>
+        <textarea id="HexIntelHex" readonly></textarea>
+       </div>
+       <div id="AssemblerHexfileSrec">
+        <h3>Motorola S-record (S28)</h3>
+        <textarea id="HexSrec"     readonly></textarea>
+       </div>
+      </div>
+     </div>
+     <div id="AssemblerController">
+      <input id="AssemblerAssemble" type="button" value="Assemble" disabled>
+      <input id="AssembledRun"      type="button" value="Run"      disabled>
+      <input id="CopyUrl"           type="button" value="Copy URL" disabled>
+     </div>
+    </article>
+   </section>
+   <section id="Result">
+    <h2>Result</h2>
+     <div id="ResultStatistics">
+      <dl>
+       <dt>CPU step</dt    ><dd id="ResultStatistics_Step"  >---</dd>
+       <dt>CPU cycle</dt   ><dd id="ResultStatistics_Cycle" >---</dd>
+       <dt>Master cycle</dt><dd id="ResultStatistics_Master">---</dd>
+      </dl>
+     </div>
+    <form id="ViewerSelect" autocomplete="off">
+     <input type="radio" name="viewer" value="textlog"  id="ViewerSelect_TextLog"  checked></input><label for="ViewerSelect_TextLog" >Text log</label>
+     <input type="radio" name="viewer" value="tablelog" id="ViewerSelect_TableLog"        ></input><label for="ViewerSelect_TableLog">Table log</label>
+     <input type="radio" name="viewer" value="timeline" id="ViewerSelect_Timeline"        ></input><label for="ViewerSelect_Timeline">Timeline</label>
+     <input type="radio" name="viewer" value="heatmap"  id="ViewerSelect_Heatmap"         ></input><label for="ViewerSelect_Heatmap" >Heatmap</label>
+     <input type="radio" name="viewer" value="written"  id="ViewerSelect_Written"         ></input><label for="ViewerSelect_Written" >Written memory</label>
+    </form>
+    <article id="ViewerTextLog" class="hide">
+     <h3>Text log</h3>
+      <textarea id="ViewerTextLog_Log" readonly></textarea>
+    </article>
+    <article id="ViewerTableLog" class="hide">
+     <h3>Table log</h3>
+     <p>TODO: Implements</p>
+    </article>
+    <article id="ViewerTimeline" class="hide">
+     <h3>Timeline</h3>
+     <p>TODO: Implements</p>
+    </article>
+    <article id="ViewerHeatmap" class="hide">
+     <h3>Heatmap</h3>
+     <p>TODO: Implements</p>
+    </article>
+    <article id="ViewerWritten" class="hide">
+     <h3>Written memory</h3>
+     <p>TODO: Implements</p>
+    </article>
+   </section>
 
   </main>
 
   <footer>
-   <p class="author"><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></p>
+   <ul>
+    <li><a class="here">SNES master cycle viewer</a></li
+    ><li><a href="manual.html">Manual</a></li
+    ><li><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></li
+    >
+   </ul>
   </footer>
   <script src="main.js"></script>
+  <script>
+   Application.Main.Initialize();
+   new ClipboardJS('#CopyUrl', {
+    text: function(trigger){
+     return Application.Main.GetCopyUrl();
+    }
+   });
+
+  </script>
  </body>
 </html>

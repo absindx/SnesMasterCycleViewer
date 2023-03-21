@@ -1,9 +1,18 @@
 @charset "UTF-8";
 /* @import url("code.css"); */
 
+:root{
+	--monospace-font	: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
 body{
 	margin			: 0px;
 	padding			: 0px;
+	color			: #000000;
+}
+body.dark{
+	color			: silver;
+	background-color	: #101010;
 }
 
 h1, h2{
@@ -16,17 +25,26 @@ h1{
 	color			: #002C3C;
 	border-bottom		: 1px solid #00AEEF;
 	background-color	: RGBA(0, 174, 239, 0.25);
+	font-weight		: normal;
+}
+.dark h1, .dark h1 a{
+	color			: #BFEAFB;
 }
 h2{
+	margin			: 8px 0px 4px;
 	padding-left		: 8px;
 	border-bottom		: 1px solid #00AEEF;
+	font-weight		: normal;
 }
 h3{
-	padding-left		: 16px;
+	margin			: 8px 0px 4px;
+	padding-left		: 8px;
 	border-bottom		: 1px solid RGBA(0, 174, 239, 0.50);
+	font-weight		: normal;
 }
 h4{
 	padding-left		: 24px;
+	font-weight		: bold;
 }
 h5{
 	padding-left		: 28px;
@@ -41,6 +59,10 @@ footer{
 	padding			: 8px;
 	border-top		: 1px solid RGBA(0, 0, 0, 0.25);
 	background-color	: RGBA(0, 0, 0, 0.125);
+}
+.dark footer{
+	border-color		: RGBA(255, 255, 255, 0.25);
+	background-color	: RGBA(255, 255, 255, 0.125);
 }
 
 footer .author{
@@ -57,6 +79,12 @@ p{
 }
 .small{
 	font-size		: 80%;
+}
+a:link{
+	color			: #0083B4;
+}
+.dark a:link{
+	color			: #3FC2F3;
 }
 
 img{
@@ -76,15 +104,24 @@ table{
 
 	border-collapse		: collapse;
 }
-th{
-	border			: solid 1px RGBA(0, 0, 0, 0.125);
-	background-color	: RGBA(0, 0, 0, 0.1);
-}
 tr:hover{
 	background-color	: RGBA(0, 174, 239, 0.1);
 }
+thead td, tr.head td, th{
+	border			: solid 1px #bbbbbb;
+	background-color	: RGBA(0, 0, 0, 0.1);
+	font-weight		: bold;
+	text-align		: center;
+}
+.dark thead td, .dark tr.head td, .dark th{
+	border-color		: #555555;
+	background-color	: RGBA(255, 255, 255, 0.1);
+}
 td{
 	border			: solid 1px #cccccc;
+}
+.dark td{
+	border-color		: #444444;
 }
 td, th{
 	padding			: 2px 8px;
@@ -99,8 +136,8 @@ dt{
 	float			: left;
 	clear			: left;
 	width			: 128px;
-	display			: list-item;
-	margin-left		: 24px;
+	/* display		: list-item; */
+	margin-left		: 0px;
 	width			: 192px;
 }
 dd:before{
@@ -118,9 +155,196 @@ header a:hover{
 	opacity			: 0.75;
 	text-decoration		: underline;
 }
+.dark header a:link{
+	color			: #BFEAFB;
+}
+
+.dark textarea, .dark input{
+	background-color	: RGBA(255, 255, 255, 0.1);
+	color			: silver;
+}
+input[type="number"]{
+	text-align		: right;
+}
 
 .jokeDel{
 	text-decoration		: line-through;
+}
+
+.comment{
+	color			: #008000;
+}
+code.inline{
+	background-color	: RGBA(128, 128, 128, 0.25);
+	border-radius		: 4px;
+	padding			: 2px 4px;
+	padding-right		: 4px;
+	font-family		: var(--monospace-font);
+}
+
+/**************************************************/
+
+:root{
+	--application-width	: 96ch;
+	--large-textbox-width	: 82ch;
+	--small-textbox-width	: 50ch;
+}
+
+body{
+	min-width		: var(--application-width);
+}
+
+#ErrorMessage{
+	color			: #CC0000;
+	border			: solid 1px #CC0000;
+	background-color	: RGBA(204, 0, 0, 0.25);
+	margin			: 8px;
+	border-radius		: 4px;
+}
+.dark #ErrorMessage{
+	color			: #CCA0A0;
+}
+
+.hide{
+	display			: none;
+}
+
+textarea{
+	display			: block;
+	margin			: auto;
+
+	white-space		: pre;
+	overflow-wrap		: normal;
+}
+
+fieldset{
+	border			: solid 2px #808080;
+	background		: RGBA(128, 128, 128, 0.10);
+	margin			: 2px 8px;
+	padding			: 4px;
+}
+fieldset dl{
+	margin			: 4px;
+}
+
+.intinput{
+	text-align		: right;
+}
+.hexinput{
+	text-align		: right;
+	text-transform		: uppercase;
+}
+
+#SettingForm{
+	width			: var(--application-width);
+	margin			: auto;
+}
+
+#Assembler article{
+	margin			: auto;
+}
+#AssemblerContainer, #AssemblerController{
+	margin			: 4px 0px;
+	display			: flex;
+	flex-direction		: row;
+	justify-content		: center;
+}
+#AssemblerMain textarea{
+	resize			: vertical;
+	width			: var(--large-textbox-width);
+	min-height		: 8em;
+}
+#AssemblerHexfile textarea{
+	resize			: none;
+	width			: var(--small-textbox-width);
+}
+#AssemblerMain, #AssemblerHexfile{
+	margin			: 0px 2px;
+}
+#AssemblerHexfile div{
+	height			: 50%;
+	display			: flex;
+	flex-direction		: column;
+}
+#AssemblerHexfile div h3{
+	flex			: 1;
+}
+#AssemblerHexfile div textarea{
+	flex			: 100%;
+}
+#AssemblerController input[type="button"]{
+	margin			: 0px 4px;
+	padding			: 4px 32px;
+	font-size		: 120%;
+}
+
+.errorMessage{
+	color			: red;
+}
+
+#ResultStatistics{
+	margin			: 4px auto;
+	width			: var(--application-width);
+}
+#ViewerSelect{
+	margin			: 8px auto;
+	display			: flex;
+	flex-direction		: row;
+	justify-content		: center;
+}
+#ViewerSelect input{
+	display			: none;
+}
+#ViewerSelect input + label{
+	display			: block;
+	border			: 1px solid #00AEEF;
+	background-color	: RGBA(0, 174, 239, 0.10);
+	border-radius		: 4px;
+	margin			: 4px;
+	padding			: 4px 16px;
+	user-select		: none;
+}
+#ViewerSelect input[type="radio"]:checked + label{
+	background-color	: RGBA(0, 174, 239, 0.50);
+	opacity			: 1.00;
+}
+#ViewerSelect label+input:checked{
+	background-color	: #90B0BD;
+}
+
+#ViewerTextLog_Log{
+	margin			: 16px auto;
+	width			: 144ch;
+	max-width		: 90%;
+	height			: 32ch;
+	min-height		: 16ch;
+	resize			: vertical;
+	overflow		: scroll;
+}
+
+footer ul{
+	text-align		: center;
+}
+footer ul li{
+	display			: inline;
+	border-left		: 1px solid #808080;
+	padding			: 2px 8px;
+}
+footer ul li:first-of-type{
+	border-left		: none;
+}
+
+@media (max-width: 82ch){
+	#AssemblerContainer{
+		display		: block;
+	}
+	#AssemblerHexfile textarea{
+		width			: var(--large-textbox-width);
+		height			: 8em;
+	}
+	#AssemblerHexfile div{
+		display			: block;
+	}
 }
 
 
