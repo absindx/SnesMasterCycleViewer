@@ -21,5 +21,7 @@ This is **not** intended to emulate SNES perfectly.
 	* 5A22 Mul/Div
 	* WRAM data
 	* ...
+* Assembler
+	* Local define
 * Manual
 * Mapping of execution address to input source line number
