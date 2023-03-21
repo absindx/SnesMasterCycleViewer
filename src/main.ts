@@ -5193,6 +5193,15 @@ namespace Application{
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
 
+			const setting	= Main.GetUrlParameter();
+			if(setting){
+				Main.SetSetting(setting);
+				if(setting.Source.length > 0){
+					Main.Dom.AssemblerAssemble.click();
+					Main.Dom.AssembledRun.click();
+				}
+			}
+
 			Main.Dom.ErrorMessage.classList.add('hide');
 		}
 
@@ -5218,9 +5227,8 @@ namespace Application{
 			// Setting from form
 			const setting		= Main.GetSetting();
 
-			const sourceElement	= Main.Dom.AssemblerSource as HTMLInputElement;
-			const source		= sourceElement.value;
-			if(!source){
+			const source		= setting.Source;
+			if((!source) || (source.length <= 0)){
 				Main.SetAssemblerError(false, []);
 				return;
 			}
@@ -5319,47 +5327,6 @@ namespace Application{
 			}
 		}
 
-		private static GetSetting(): Setting{
-
-			function getDom(name: string): HTMLInputElement{
-				const dom	= document.querySelector<HTMLInputElement>('#SettingForm input[name="' + name + '"]');
-				return dom ?? Main.dummyInputNode;
-			}
-
-			const setting: Setting	= new Setting;
-			setting.RomMapping		= Main.GetFormRadio<Emulator.RomMapping>('mapping', {
-				'lorom': Emulator.RomMapping.LoROM,
-				'hirom': Emulator.RomMapping.HiROM,
-			}, Emulator.RomMapping.LoROM);
-			setting.FastRom			= Main.GetFormBoolean(getDom('fastrom'));
-			setting.StatusFlagE		= Main.GetFormBoolean(getDom('eflag'));
-			setting.StartAddress		= Main.GetFormNumber( getDom('startpc'), 16, 0x008000);
-			setting.MaxCycle		= Main.GetFormNumber( getDom('cycle'), 10, 10000);
-			setting.EmulationStopSTP	= Main.GetFormBoolean(getDom('stops'));
-			setting.EmulationStopWAI	= Main.GetFormBoolean(getDom('stopw'));
-			setting.EmulationStopBRK	= Main.GetFormBoolean(getDom('stopb'));
-			setting.EmulationStopCOP	= Main.GetFormBoolean(getDom('stopc'));
-			setting.EmulationStopWDM	= Main.GetFormBoolean(getDom('stopr'));
-
-			return setting;
-		}
-		private static GetFormBoolean(dom: HTMLInputElement): boolean{
-			return dom.checked;
-		}
-		private static GetFormNumber(dom: HTMLInputElement, base: number, defaultValue: number): number{
-			const value	= parseInt(dom.value, base);
-			return (isNaN(value))? defaultValue : value;
-		}
-		private static GetFormRadio<ReturnType>(name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
-			for(const key in values){
-				const dom	= document.querySelector('#SettingForm input[name="' + name + '"][value="' + key + '"]');
-				if((dom instanceof HTMLInputElement) && dom.checked){
-					return values[key];
-				}
-			}
-			return defaultValue;
-		}
-
 		private static SetAssemblerError(success: boolean, errorMessages: Assembler.ErrorMessage[]){
 			const className	= 'errorMessage';
 			if(success){
@@ -5388,6 +5355,181 @@ namespace Application{
 			textarea.textContent	= '';
 		}
 
+		private static GetSetting(): Setting{
+
+			function getDom(name: string): HTMLInputElement{
+				const dom	= document.querySelector<HTMLInputElement>('#SettingForm input[name="' + name + '"]');
+				return dom ?? Main.dummyInputNode;
+			}
+
+			const setting: Setting	= new Setting;
+			setting.RomMapping		= Main.GetFormRadio<Emulator.RomMapping>('mapping', {
+				'lorom': Emulator.RomMapping.LoROM,
+				'hirom': Emulator.RomMapping.HiROM,
+			}, Emulator.RomMapping.LoROM);
+			setting.FastRom			= Main.GetFormBoolean(getDom('fastrom'));
+			setting.StatusFlagE		= Main.GetFormBoolean(getDom('eflag'));
+			setting.StartAddress		= Main.GetFormNumber( getDom('startpc'), 16, 0x008000);
+			setting.MaxCycle		= Main.GetFormNumber( getDom('cycle'), 10, 10000);
+			setting.EmulationStopSTP	= Main.GetFormBoolean(getDom('stops'));
+			setting.EmulationStopWAI	= Main.GetFormBoolean(getDom('stopw'));
+			setting.EmulationStopBRK	= Main.GetFormBoolean(getDom('stopb'));
+			setting.EmulationStopCOP	= Main.GetFormBoolean(getDom('stopc'));
+			setting.EmulationStopWDM	= Main.GetFormBoolean(getDom('stopr'));
+			setting.Source			= (Main.Dom.AssemblerSource as HTMLInputElement).value;
+
+			return setting;
+		}
+		private static GetFormBoolean(dom: HTMLInputElement): boolean{
+			return dom.checked;
+		}
+		private static GetFormNumber(dom: HTMLInputElement, base: number, defaultValue: number): number{
+			const value	= parseInt(dom.value, base);
+			return (isNaN(value))? defaultValue : value;
+		}
+		private static GetFormRadio<ReturnType>(name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
+			for(const key in values){
+				const dom	= document.querySelector('#SettingForm input[name="' + name + '"][value="' + key + '"]');
+				if((dom instanceof HTMLInputElement) && dom.checked){
+					return values[key];
+				}
+			}
+			return defaultValue;
+		}
+
+		private static SetSetting(setting: Setting){
+			function getDom(name: string, value: string | null=null): HTMLInputElement{
+				let query	= '#SettingForm input[name="' + name + '"]';
+				if(value !== null){
+					query	+= '[value="' + value + '"]';
+				}
+				const dom	= document.querySelector<HTMLInputElement>(query);
+				return dom ?? Main.dummyInputNode;
+			}
+
+			Main.SetFormBoolean(    getDom('mapping', 'lorom'),	setting.RomMapping === Emulator.RomMapping.LoROM);
+			Main.SetFormBoolean(    getDom('mapping', 'hirom'),	setting.RomMapping === Emulator.RomMapping.HiROM);
+			Main.SetFormBoolean(    getDom('fastrom'),		setting.FastRom);
+			Main.SetFormBoolean(    getDom('eflag'),		setting.StatusFlagE);
+			Main.SetFormHexadecimal(getDom('startpc'),		setting.StartAddress);
+			Main.SetFormInteger(    getDom('cycle'),		setting.MaxCycle);
+			Main.SetFormBoolean(    getDom('stopw'),		setting.EmulationStopWAI);
+			Main.SetFormBoolean(    getDom('stopb'),		setting.EmulationStopBRK);
+			Main.SetFormBoolean(    getDom('stopc'),		setting.EmulationStopCOP);
+			Main.SetFormBoolean(    getDom('stopr'),		setting.EmulationStopWDM);
+
+			if(setting.Source.length > 0){
+				(Main.Dom.AssemblerSource as HTMLInputElement).value	= setting.Source;
+			}
+		}
+		private static SetFormBoolean(dom: HTMLInputElement, value: boolean){
+			dom.checked	= value;
+		}
+		private static SetFormInteger(dom: HTMLInputElement, value: number){
+			dom.value	= value.toString();
+		}
+		private static SetFormHexadecimal(dom: HTMLInputElement, value: number){
+			const digit	= parseInt(dom.getAttribute('maxlength') ?? '0') ?? 0;
+			dom.value	= Utility.Format.ToHexString(value, digit);
+		}
+
+		private static GetUrlParameter(): Setting | null{
+			if(location.search.length <= 0){
+				return null;
+			}
+
+			const search	= (location.search[0] === '?')? location.search.substring(1) : location.search;
+			const parameters= search.split('&');
+			const setting	= new Setting();
+
+			function split(parameter: string): [string, string]{
+				const index	= parameter.indexOf('=');
+				if(index >= 1){
+					const left	= parameter.substring(0, index);
+					const right	= parameter.substring(index + 1);
+					return [left, right];
+				}
+				else{
+					return [parameter, ''];
+				}
+			}
+			function parameterToBoolean(parameter: string, defaultValue: boolean): boolean{
+				const num	= parseInt(parameter);
+				if(!isNaN(num)){
+					return !!num;
+				}
+				else if(parameter.toUpperCase() === 'TRUE'){
+					return true;
+				}
+				else if(parameter.toUpperCase() === 'FALSE'){
+					return false;
+				}
+				return defaultValue;
+			}
+			function parameterToInteger(parameter: string, base: number, defaultValue: number): number{
+				const num	= parseInt(parameter, base);
+				if(!isNaN(num)){
+					return num;
+				}
+				return defaultValue;
+			}
+
+			for(const index in parameters){
+				const [key, value]	= split(parameters[index]);
+				switch(key){
+					case 'rm':{
+						switch(value){
+							case 'lo':
+								setting.RomMapping	= Emulator.RomMapping.LoROM;
+								break;
+							case 'hi':
+								setting.RomMapping	= Emulator.RomMapping.HiROM;
+								break;
+						}
+						break;
+					}
+					case 'fr':
+						setting.FastRom			= parameterToBoolean(value, setting.FastRom);
+						break;
+					case 'sfe':
+						setting.StatusFlagE		= parameterToBoolean(value, setting.StatusFlagE);
+						break;
+					case 'sa':
+						setting.StartAddress		= parameterToInteger(value, 16, setting.StartAddress);
+						break;
+					case 'mc':
+						setting.MaxCycle		= parameterToInteger(value, 10, setting.MaxCycle);
+						break;
+					case 'esw':
+						setting.EmulationStopWAI	= parameterToBoolean(value, setting.EmulationStopWAI);
+						break;
+					case 'esb':
+						setting.EmulationStopBRK	= parameterToBoolean(value, setting.EmulationStopBRK);
+						break;
+					case 'esc':
+						setting.EmulationStopCOP	= parameterToBoolean(value, setting.EmulationStopCOP);
+						break;
+					case 'esr':
+						setting.EmulationStopWDM	= parameterToBoolean(value, setting.EmulationStopWDM);
+						break;
+					case 'src':
+						setting.Source			= Main.DecodeSource(value);
+						break;
+				}
+			}
+
+			return setting;
+		}
+
+		private static EncodeSource(src: string): string{
+			const urlEncodedSource	= encodeURIComponent(src);
+			return urlEncodedSource;
+		}
+		private static DecodeSource(src: string): string{
+			const urlDecodedSource	= decodeURIComponent(src);
+			return urlDecodedSource;
+		}
+
 		private static DumpCpuLog(cpu: Emulator.Cpu){
 			for(let i = 0; i < cpu.Logs.length; i++){
 				const instructionLog	= cpu.Logs[i];
@@ -5414,6 +5556,7 @@ namespace Application{
 		EmulationStopBRK: boolean	= false;
 		EmulationStopCOP: boolean	= false;
 		EmulationStopWDM: boolean	= false;
+		Source: string			= '';
 
 		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
 			switch(instruction){

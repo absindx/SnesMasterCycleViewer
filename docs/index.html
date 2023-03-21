@@ -64,7 +64,7 @@ Start:		LDA	#$55
 		ROL
 		DEX
 		BNE	.Loop
-		STP
+		STP		; stop emulation
 </textarea>
        <h3>Output log</h3>
        <textarea id="AssemblerOutput" readonly rows="8"></textarea>
@@ -91,7 +91,12 @@ Start:		LDA	#$55
   </main>
 
   <footer>
-   <p class="author"><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></p>
+   <ul>
+    <li><a class="here">SNES master cycle viewer</a></li
+    ><li><a href="manual.html">Manual</a></li
+    ><li><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></li
+    >
+   </ul>
   </footer>
   <script src="main.js"></script>
   <script>

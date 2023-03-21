@@ -205,6 +205,9 @@ body{
 textarea{
 	display			: block;
 	margin			: auto;
+
+	white-space		: pre;
+	overflow-wrap		: normal;
 }
 
 fieldset{
@@ -270,6 +273,18 @@ fieldset dl{
 
 .errorMessage{
 	color			: red;
+}
+
+footer ul{
+	text-align		: center;
+}
+footer ul li{
+	display			: inline;
+	border-left		: 1px solid #808080;
+	padding			: 2px 8px;
+}
+footer ul li:first-of-type{
+	border-left		: none;
 }
 
 @media (max-width: 82ch){
