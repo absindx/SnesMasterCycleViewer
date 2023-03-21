@@ -5,6 +5,7 @@
   <title>SNES master cycle viewer</title>
   <!-- <link rel="shortcut icon" href="favicon.ico"> -->
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js"></script>
  </head>
  <body>
   <header>
@@ -15,6 +16,39 @@
     <p>
      System initialization failed.
     </p>
+   </section>
+   <section id="Setting">
+    <h2>Setting</h2>
+    <form id="SettingForm" autocomplete="off">
+     <fieldset>
+      <legend>Setting</legend>
+      <dl>
+       <dt>ROM mapping</dt><dd
+       > <label><input type="radio" name="mapping" value="lorom" checked	>LoROM</input></label
+       > <label><input type="radio" name="mapping" value="hirom"		       >HiROM</input></label
+       ></dd>
+       <dt>FastROM</dt><dd
+       > <label><input type="checkbox" name="fastrom">Enable FastROM (<code class="inline">MEMSEL.bit0 = 1</code>)</input></label
+       ></dd>
+       <dt>Status flag</dt><dd
+       > <label><input type="checkbox" name="eflag">Emulation flag</input></label
+       ></dd>
+       <dt>Start address</dt><dd
+       > <label>$ <input type="text" name="startpc" class="hexinput" maxlength="6" value="008000"></input></label
+       ></dd>
+       <dt>Max cycle</dt><dd
+       > <label><input type="number" name="cycle" class="intinput" min="0" step="100" value="10000"></input></label
+       ></dd>
+       <dt>Emulation stop</dt><dd
+       > <label><input type="checkbox" name="stops" checked disabled>$DB STP</input></label
+       > <label><input type="checkbox" name="stopw">$CB WAI</input></label
+       > <label><input type="checkbox" name="stopb">$00 BRK</input></label
+       > <label><input type="checkbox" name="stopc">$02 COP</input></label
+       > <label><input type="checkbox" name="stopr">$42 WDM</input></label
+       ></dd>
+      </dl>
+     </fieldset>
+    </form>
    </section>
    <section id="Assembler">
     <h2>Assembler</h2>
@@ -31,7 +65,7 @@ Start:		LDA	#$55
 		ROL
 		DEX
 		BNE	.Loop
-		STP
+		STP		; stop emulation
 </textarea>
        <h3>Output log</h3>
        <textarea id="AssemblerOutput" readonly rows="8"></textarea>
@@ -50,7 +84,7 @@ Start:		LDA	#$55
      <div id="AssemblerController">
       <input id="AssemblerAssemble" type="button" value="Assemble" disabled>
       <input id="AssembledRun"      type="button" value="Run"      disabled>
-
+      <input id="CopyUrl"           type="button" value="Copy URL" disabled>
      </div>
     </article>
    </section>
@@ -58,11 +92,22 @@ Start:		LDA	#$55
   </main>
 
   <footer>
-   <p class="author"><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></p>
+   <ul>
+    <li><a class="here">SNES master cycle viewer</a></li
+    ><li><a href="manual.html">Manual</a></li
+    ><li><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></li
+    >
+   </ul>
   </footer>
   <script src="main.js"></script>
   <script>
    Application.Main.Initialize();
+   new ClipboardJS('#CopyUrl', {
+    text: function(trigger){
+     return Application.Main.GetCopyUrl();
+    }
+   });
+
   </script>
  </body>
 </html>

@@ -1,6 +1,10 @@
 @charset "UTF-8";
 /* @import url("code.css"); */
 
+:root{
+	--monospace-font	: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
 body{
 	margin			: 0px;
 	padding			: 0px;
@@ -125,8 +129,8 @@ dt{
 	float			: left;
 	clear			: left;
 	width			: 128px;
-	display			: list-item;
-	margin-left		: 24px;
+	/* display		: list-item; */
+	margin-left		: 0px;
 	width			: 192px;
 }
 dd:before{
@@ -148,23 +152,50 @@ header a:hover{
 	color			: #BFEAFB;
 }
 
-.dark textarea{
+.dark textarea, .dark input{
 	background-color	: RGBA(255, 255, 255, 0.1);
 	color			: silver;
+}
+input[type="number"]{
+	text-align		: right;
 }
 
 .jokeDel{
 	text-decoration		: line-through;
 }
 
+.comment{
+	color			: #008000;
+}
+code.inline{
+	background-color	: RGBA(128, 128, 128, 0.25);
+	border-radius		: 4px;
+	padding			: 2px 4px;
+	padding-right		: 4px;
+	font-family		: var(--monospace-font);
+}
+
 /**************************************************/
 
+:root{
+	--application-width	: 96ch;
+	--large-textbox-width	: 82ch;
+	--small-textbox-width	: 50ch;
+}
+
+body{
+	min-width		: var(--application-width);
+}
+
 #ErrorMessage{
-	color			: #3C1000;
-	border			: solid 1px #EF4000;
-	background-color	: RGBA(239, 64, 0, 0.25);
+	color			: #CC0000;
+	border			: solid 1px #CC0000;
+	background-color	: RGBA(204, 0, 0, 0.25);
 	margin			: 8px;
 	border-radius		: 4px;
+}
+.dark #ErrorMessage{
+	color			: #CCA0A0;
 }
 
 .hide{
@@ -173,6 +204,32 @@ header a:hover{
 
 textarea{
 	display			: block;
+	margin			: auto;
+
+	white-space		: pre;
+	overflow-wrap		: normal;
+}
+
+fieldset{
+	border			: solid 2px #808080;
+	background		: RGBA(128, 128, 128, 0.10);
+	margin			: 2px 8px;
+	padding			: 4px;
+}
+fieldset dl{
+	margin			: 4px;
+}
+
+.intinput{
+	text-align		: right;
+}
+.hexinput{
+	text-align		: right;
+	text-transform		: uppercase;
+}
+
+#SettingForm{
+	width			: var(--application-width);
 	margin			: auto;
 }
 
@@ -187,12 +244,12 @@ textarea{
 }
 #AssemblerMain textarea{
 	resize			: vertical;
-	width			: 82ch;
+	width			: var(--large-textbox-width);
 	min-height		: 8em;
 }
 #AssemblerHexfile textarea{
 	resize			: none;
-	width			: 50ch;
+	width			: var(--small-textbox-width);
 }
 #AssemblerMain, #AssemblerHexfile{
 	margin			: 0px 2px;
@@ -216,6 +273,31 @@ textarea{
 
 .errorMessage{
 	color			: red;
+}
+
+footer ul{
+	text-align		: center;
+}
+footer ul li{
+	display			: inline;
+	border-left		: 1px solid #808080;
+	padding			: 2px 8px;
+}
+footer ul li:first-of-type{
+	border-left		: none;
+}
+
+@media (max-width: 82ch){
+	#AssemblerContainer{
+		display		: block;
+	}
+	#AssemblerHexfile textarea{
+		width			: var(--large-textbox-width);
+		height			: 8em;
+	}
+	#AssemblerHexfile div{
+		display			: block;
+	}
 }
 
 

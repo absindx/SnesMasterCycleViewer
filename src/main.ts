@@ -2772,7 +2772,7 @@ namespace Emulator{
 
 	export class Memory{
 		private AddressSpace: {[Address: number]: number}	= {};
-		ROMMapping: ROMMapping	= ROMMapping.LoROM;
+		ROMMapping: RomMapping	= RomMapping.LoROM;
 		IsFastROM: boolean	= false;
 
 		CpuRegister: CpuRegister	= new CpuRegister();
@@ -2847,7 +2847,7 @@ namespace Emulator{
 				return [AccessRegion.IO, address];
 			}
 
-			if(this.ROMMapping === ROMMapping.LoROM){
+			if(this.ROMMapping === RomMapping.LoROM){
 				if(((bank & 0x40) === 0) && Utility.Math.IsRange(page, 0x6000, 0x8000)){
 					// Open bus
 					return [AccessRegion.OpenBus, address];
@@ -2865,7 +2865,7 @@ namespace Emulator{
 					return [AccessRegion.ROM, address];
 				}
 			}
-			else if(this.ROMMapping === ROMMapping.HiROM){
+			else if(this.ROMMapping === RomMapping.HiROM){
 				if(Utility.Math.IsRange(bank & 0x7F, 0x00, 0x10) && Utility.Math.IsRange(page, 0x6000, 0x8000)){
 					// Open bus
 					// $00-0F,80-8F:6000-7FFF
@@ -3548,7 +3548,7 @@ namespace Emulator{
 		Slow	= 8,
 		XSlow	= 12,
 	}
-	export enum ROMMapping{
+	export enum RomMapping{
 		LoROM,
 		HiROM,
 		// ExLoROM,
@@ -5166,14 +5166,17 @@ namespace Application{
 		private static Memory: Emulator.Memory			= new Emulator.Memory();
 		private static Cpu: Emulator.Cpu			= new Emulator.Cpu(this.Memory);
 
-		static Dom: {[name: string]: HTMLElement}	= {
-			'ErrorMessage':		document.createElement('span'),
-			'AssemblerSource':	document.createElement('span'),
-			'AssemblerOutput':	document.createElement('span'),
-			'HexIntelHex':		document.createElement('span'),
-			'HexSrec':		document.createElement('span'),
-			'AssemblerAssemble':	document.createElement('span'),
-			'AssembledRun':		document.createElement('span'),
+		private static dummyNode	= document.createElement('span');
+		private static dummyInputNode	= document.createElement('input');
+		private static Dom: {[name: string]: HTMLElement}	= {
+			'ErrorMessage':		Main.dummyNode,
+			'AssemblerSource':	Main.dummyNode,
+			'AssemblerOutput':	Main.dummyNode,
+			'HexIntelHex':		Main.dummyNode,
+			'HexSrec':		Main.dummyNode,
+			'AssemblerAssemble':	Main.dummyNode,
+			'AssembledRun':		Main.dummyNode,
+			'CopyUrl':		Main.dummyNode,
 		};
 
 		public static Initialize(){
@@ -5183,16 +5186,29 @@ namespace Application{
 				return;
 			}
 
-			Main.Dom.ErrorMessage.classList.add('hide');
-
-			Main.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
+			DomUtility.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
+			DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
+			DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
+			Main.Dom.CopyUrl.removeAttribute('disabled');
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
+
+			const setting	= Main.GetUrlParameter();
+			if(setting){
+				Main.SetSetting(setting);
+				if(setting.Source.length > 0){
+					Main.Dom.AssemblerAssemble.click();
+					Main.Dom.AssembledRun.click();
+				}
+			}
+
+			Main.Dom.ErrorMessage.classList.add('hide');
 		}
 
 		private static GetDomElements(): boolean{
+			let result	= true;
 			const set	= (name: string): boolean => {
 				const element	= document.querySelector<HTMLElement>('#' + name);
 				if(element){
@@ -5201,30 +5217,24 @@ namespace Application{
 				}
 				return false;
 			}
-			if(	true	// placeholder
-				&& set("ErrorMessage")
-				&& set("AssemblerSource")
-				&& set("AssemblerOutput")
-				&& set("HexIntelHex")
-				&& set("HexSrec")
-				&& set("AssemblerAssemble")
-				&& set("AssembledRun")
-			){
-				return true;
+			for(const key in Main.Dom){
+				result	&&= set(key);
 			}
-			return false;
+			return result;
 		}
 
 		public static Assemble(){
 			Main.Assembled	= null;
 
-			const sourceElement	= Main.Dom.AssemblerSource as HTMLInputElement;
-			const source		= sourceElement.value;
-			if(!source){
+			// Setting from form
+			const setting		= Main.GetSetting();
+
+			const source		= setting.Source;
+			if((!source) || (source.length <= 0)){
 				Main.SetAssemblerError(false, []);
 				return;
 			}
-			const [assembled, message]	= Assembler.Assembler.Assemble(source, Main.AssembleStartAddress);
+			const [assembled, message]	= Assembler.Assembler.Assemble(source, setting.StartAddress);
 			if(assembled === null){
 				Main.SetAssemblerError(false, message);
 				return;
@@ -5246,13 +5256,14 @@ namespace Application{
 			const memory	= new Emulator.Memory();
 			Main.Memory	= memory;
 
-			// TODO: Set from form
-			memory.ROMMapping	= Emulator.ROMMapping.LoROM;
-			memory.IsFastROM	= false;
-			const maxCycle		= 10000;
-			const statusFlagE	= false;
+			// Setting from form
+			const setting		= Main.GetSetting();
+			memory.ROMMapping	= setting.RomMapping;
+			memory.IsFastROM	= setting.FastRom;
+			const maxCycle		= setting.MaxCycle;
+			const statusFlagE	= setting.StatusFlagE;
 
-			Main.UploadDefaultMemory();
+			Main.UploadDefaultMemory(setting.StartAddress);
 			Main.UploadMemory();
 
 			const cpu		= new Emulator.Cpu(Main.Memory);
@@ -5261,22 +5272,25 @@ namespace Application{
 			const initialRegisters	= new Emulator.Registers();
 			initialRegisters.SetStatusFlagE(statusFlagE);
 			cpu.ResetRegisters	= {
-			//	PB:	Utility.Type.ToByte(Main.AssembleStartAddress >> 16),
-			//	PC:	Utility.Type.ToWord(Main.AssembleStartAddress),
-				E:	(statusFlagE)? 1 : 0,
-			//	P:	0x14,	// TODO: Debug .longm
-			//	X:	0x8000,
-			//	Y:	0x8000,
+				PB:	Utility.Type.ToByte(setting.StartAddress >> 16),
+				PC:	Utility.Type.ToWord(setting.StartAddress & 0x00FFFF),
+				E:	(setting.StatusFlagE)? 1 : 0,
 			};
 
 			cpu.Boot();
 
-			// TODO: Debug
 			let stepCounter	= 0;
-			// while(!cpu.CpuHalted && (cpu.CycleCounter < maxCycle) && (stepCounter < maxCycle)){
-			while(!cpu.CpuHalted && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle) && ((cpu.Logs.length <= 0) || (cpu.Logs[cpu.Logs.length - 1].Instruction !== Emulator.Instruction.BRK))){
+			while((!cpu.CpuHalted) && (cpu.MasterCycleCounter < maxCycle) && (stepCounter < maxCycle)){
 				cpu.Step();
 				stepCounter++;
+
+				if(cpu.Logs.length > 0){
+					const lastInstruction	= cpu.Logs[cpu.Logs.length - 1].Instruction;
+					const settingStop	= setting.GetEmulationStopInstruction(lastInstruction);
+					if(settingStop){
+						break;
+					}
+				}
 			}
 
 			// TODO: Debug
@@ -5291,7 +5305,7 @@ namespace Application{
 				memory.WriteByte(chunk.Address + i, chunk.Data[i], true);
 			}
 		}
-		private static UploadDefaultMemory(){
+		private static UploadDefaultMemory(startAddress: number){
 			const resetVector: Assembler.DataChunk	= {
 				Address: 0x00FFE0,
 				Data: []
@@ -5301,7 +5315,7 @@ namespace Application{
 				chunk.Data.push(Utility.Type.ToByte(value >>  8));
 			}
 			for(let i = 0; i < 16; i++){
-				pushWord(resetVector, Main.AssembleStartAddress);
+				pushWord(resetVector, startAddress);
 			}
 
 			Main.UploadChunk(Main.Memory, resetVector);
@@ -5343,9 +5357,255 @@ namespace Application{
 			textarea.textContent	= '';
 		}
 
-		private static AllowTab(element: HTMLInputElement){
+		private static GetSetting(): Setting{
+
+			function getDom(name: string): HTMLInputElement{
+				const dom	= document.querySelector<HTMLInputElement>('#SettingForm input[name="' + name + '"]');
+				return dom ?? Main.dummyInputNode;
+			}
+
+			const setting: Setting	= new Setting;
+			setting.RomMapping		= Main.GetFormRadio<Emulator.RomMapping>('mapping', {
+				'lorom': Emulator.RomMapping.LoROM,
+				'hirom': Emulator.RomMapping.HiROM,
+			}, Emulator.RomMapping.LoROM);
+			setting.FastRom			= Main.GetFormBoolean(getDom('fastrom'));
+			setting.StatusFlagE		= Main.GetFormBoolean(getDom('eflag'));
+			setting.StartAddress		= Main.GetFormNumber( getDom('startpc'), 16, 0x008000);
+			setting.MaxCycle		= Main.GetFormNumber( getDom('cycle'), 10, 10000);
+			setting.EmulationStopSTP	= Main.GetFormBoolean(getDom('stops'));
+			setting.EmulationStopWAI	= Main.GetFormBoolean(getDom('stopw'));
+			setting.EmulationStopBRK	= Main.GetFormBoolean(getDom('stopb'));
+			setting.EmulationStopCOP	= Main.GetFormBoolean(getDom('stopc'));
+			setting.EmulationStopWDM	= Main.GetFormBoolean(getDom('stopr'));
+			setting.Source			= (Main.Dom.AssemblerSource as HTMLInputElement).value;
+
+			return setting;
+		}
+		private static GetFormBoolean(dom: HTMLInputElement): boolean{
+			return dom.checked;
+		}
+		private static GetFormNumber(dom: HTMLInputElement, base: number, defaultValue: number): number{
+			const value	= parseInt(dom.value, base);
+			return (isNaN(value))? defaultValue : value;
+		}
+		private static GetFormRadio<ReturnType>(name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
+			for(const key in values){
+				const dom	= document.querySelector('#SettingForm input[name="' + name + '"][value="' + key + '"]');
+				if((dom instanceof HTMLInputElement) && dom.checked){
+					return values[key];
+				}
+			}
+			return defaultValue;
+		}
+
+		private static SetSetting(setting: Setting){
+			function getDom(name: string, value: string | null=null): HTMLInputElement{
+				let query	= '#SettingForm input[name="' + name + '"]';
+				if(value !== null){
+					query	+= '[value="' + value + '"]';
+				}
+				const dom	= document.querySelector<HTMLInputElement>(query);
+				return dom ?? Main.dummyInputNode;
+			}
+
+			Main.SetFormBoolean(    getDom('mapping', 'lorom'),	setting.RomMapping === Emulator.RomMapping.LoROM);
+			Main.SetFormBoolean(    getDom('mapping', 'hirom'),	setting.RomMapping === Emulator.RomMapping.HiROM);
+			Main.SetFormBoolean(    getDom('fastrom'),		setting.FastRom);
+			Main.SetFormBoolean(    getDom('eflag'),		setting.StatusFlagE);
+			Main.SetFormHexadecimal(getDom('startpc'),		setting.StartAddress);
+			Main.SetFormInteger(    getDom('cycle'),		setting.MaxCycle);
+			Main.SetFormBoolean(    getDom('stopw'),		setting.EmulationStopWAI);
+			Main.SetFormBoolean(    getDom('stopb'),		setting.EmulationStopBRK);
+			Main.SetFormBoolean(    getDom('stopc'),		setting.EmulationStopCOP);
+			Main.SetFormBoolean(    getDom('stopr'),		setting.EmulationStopWDM);
+
+			if(setting.Source.length > 0){
+				(Main.Dom.AssemblerSource as HTMLInputElement).value	= setting.Source;
+			}
+		}
+		private static SetFormBoolean(dom: HTMLInputElement, value: boolean){
+			dom.checked	= value;
+		}
+		private static SetFormInteger(dom: HTMLInputElement, value: number){
+			dom.value	= value.toString();
+		}
+		private static SetFormHexadecimal(dom: HTMLInputElement, value: number){
+			const digit	= parseInt(dom.getAttribute('maxlength') ?? '0') ?? 0;
+			dom.value	= Utility.Format.ToHexString(value, digit);
+		}
+
+		private static GetUrlParameter(): Setting | null{
+			if(location.search.length <= 0){
+				return null;
+			}
+
+			const search	= (location.search[0] === '?')? location.search.substring(1) : location.search;
+			const parameters= search.split('&');
+			const setting	= new Setting();
+
+			function split(parameter: string): [string, string]{
+				const index	= parameter.indexOf('=');
+				if(index >= 1){
+					const left	= parameter.substring(0, index);
+					const right	= parameter.substring(index + 1);
+					return [left, right];
+				}
+				else{
+					return [parameter, ''];
+				}
+			}
+			function parameterToBoolean(parameter: string, defaultValue: boolean): boolean{
+				const num	= parseInt(parameter);
+				if(!isNaN(num)){
+					return !!num;
+				}
+				else if(parameter.toUpperCase() === 'TRUE'){
+					return true;
+				}
+				else if(parameter.toUpperCase() === 'FALSE'){
+					return false;
+				}
+				return defaultValue;
+			}
+			function parameterToInteger(parameter: string, base: number, defaultValue: number): number{
+				const num	= parseInt(parameter, base);
+				if(!isNaN(num)){
+					return num;
+				}
+				return defaultValue;
+			}
+
+			for(const index in parameters){
+				const [key, value]	= split(parameters[index]);
+				switch(key){
+					case 'rm':{
+						switch(value){
+							case 'lo':
+								setting.RomMapping	= Emulator.RomMapping.LoROM;
+								break;
+							case 'hi':
+								setting.RomMapping	= Emulator.RomMapping.HiROM;
+								break;
+						}
+						break;
+					}
+					case 'fr':
+						setting.FastRom			= parameterToBoolean(value, setting.FastRom);
+						break;
+					case 'sfe':
+						setting.StatusFlagE		= parameterToBoolean(value, setting.StatusFlagE);
+						break;
+					case 'sa':
+						setting.StartAddress		= parameterToInteger(value, 16, setting.StartAddress);
+						break;
+					case 'mc':
+						setting.MaxCycle		= parameterToInteger(value, 10, setting.MaxCycle);
+						break;
+					case 'esw':
+						setting.EmulationStopWAI	= parameterToBoolean(value, setting.EmulationStopWAI);
+						break;
+					case 'esb':
+						setting.EmulationStopBRK	= parameterToBoolean(value, setting.EmulationStopBRK);
+						break;
+					case 'esc':
+						setting.EmulationStopCOP	= parameterToBoolean(value, setting.EmulationStopCOP);
+						break;
+					case 'esr':
+						setting.EmulationStopWDM	= parameterToBoolean(value, setting.EmulationStopWDM);
+						break;
+					case 'src':
+						setting.Source			= Main.DecodeSource(value);
+						break;
+				}
+			}
+
+			return setting;
+		}
+		public static GetCopyUrl(): string{
+			let url		= location.origin + location.pathname;
+
+			const setting	= Main.GetSetting();
+
+			function booleanToParameter(value: boolean): string{
+				return (value)? '1' : '0';
+			}
+
+			url		+= `?rm=${ (setting.RomMapping === Emulator.RomMapping.HiROM)? 'hi' : 'lo' }`;
+			url		+= `&fr=${ booleanToParameter(setting.FastRom) }`;
+			url		+= `&sfe=${ booleanToParameter(setting.StatusFlagE) }`;
+			url		+= `&sa=${ Utility.Format.ToHexString(setting.StartAddress, 6) }`;
+			url		+= `&mc=${ setting.MaxCycle.toString() }`;
+			url		+= `&esw=${ booleanToParameter(setting.EmulationStopWAI) }`;
+			url		+= `&esb=${ booleanToParameter(setting.EmulationStopBRK) }`;
+			url		+= `&esc=${ booleanToParameter(setting.EmulationStopCOP) }`;
+			url		+= `&esr=${ booleanToParameter(setting.EmulationStopWDM) }`;
+			url		+= `&src=${ Main.EncodeSource(setting.Source) }`;
+
+			return url;
+		}
+
+		private static EncodeSource(src: string): string{
+			const urlEncodedSource	= encodeURIComponent(src);
+			return urlEncodedSource;
+		}
+		private static DecodeSource(src: string): string{
+			const urlDecodedSource	= decodeURIComponent(src);
+			return urlDecodedSource;
+		}
+
+		private static DumpCpuLog(cpu: Emulator.Cpu){
+			for(let i = 0; i < cpu.Logs.length; i++){
+				const instructionLog	= cpu.Logs[i];
+				console.log(`[${i}] ${instructionLog.GetLogString()}`);
+				for(let j = 0; j < instructionLog.AccessLog.length; j++){
+					const accessLog	= instructionLog.AccessLog[j];
+					console.log(`  [${Utility.Format.PadSpace(Emulator.AccessType[accessLog.Type], 12)}]`
+						+ ` $${Utility.Format.ToHexString(accessLog.AddressBus, 6)} = $${Utility.Format.ToHexString(accessLog.DataBus, 2)}`
+						+ ` @ ${Emulator.AccessSpeed[accessLog.Cycle]}`
+					);
+				}
+			}
+		}
+	}
+
+	class Setting{
+		RomMapping: Emulator.RomMapping	= Emulator.RomMapping.LoROM;
+		FastRom: boolean		= false;
+		StatusFlagE: boolean		= false;
+		StartAddress: number		= 0x008000;
+		MaxCycle: number		= 10000;
+		EmulationStopSTP: boolean	= true;
+		EmulationStopWAI: boolean	= false;
+		EmulationStopBRK: boolean	= false;
+		EmulationStopCOP: boolean	= false;
+		EmulationStopWDM: boolean	= false;
+		Source: string			= '';
+
+		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
+			switch(instruction){
+				case Emulator.Instruction.STP:	return this.EmulationStopSTP;
+				case Emulator.Instruction.WAI:	return this.EmulationStopWAI;
+				case Emulator.Instruction.BRK:	return this.EmulationStopBRK;
+				case Emulator.Instruction.COP:	return this.EmulationStopCOP;
+				case Emulator.Instruction.WDM:	return this.EmulationStopWDM;
+			}
+			return false;
+		}
+	}
+
+	class DomUtility{
+		public static ApplyDomEvents<ElementType extends Element>(selector: string, domEvent: (element: ElementType) => void){
+			const doms	= document.querySelectorAll<ElementType>(selector);
+			doms.forEach((dom) => {
+				domEvent(dom);
+			})
+		}
+
+		// Allow tab input
+		public static AllowTab(element: HTMLInputElement){
 			element.addEventListener('keydown', (e: KeyboardEvent) => {
-				Main.AllowTabEvent(element, e);
+				DomUtility.AllowTabEvent(element, e);
 			});
 		}
 		private static AllowTabEvent(obj: HTMLInputElement, e: KeyboardEvent){
@@ -5383,17 +5643,107 @@ namespace Application{
 			}
 		}
 
-		private static DumpCpuLog(cpu: Emulator.Cpu){
-			for(let i = 0; i < cpu.Logs.length; i++){
-				const instructionLog	= cpu.Logs[i];
-				console.log(`[${i}] ${instructionLog.GetLogString()}`);
-				for(let j = 0; j < instructionLog.AccessLog.length; j++){
-					const accessLog	= instructionLog.AccessLog[j];
-					console.log(`  [${Utility.Format.PadSpace(Emulator.AccessType[accessLog.Type], 12)}]`
-						+ ` $${Utility.Format.ToHexString(accessLog.AddressBus, 6)} = $${Utility.Format.ToHexString(accessLog.DataBus, 2)}`
-						+ ` @ ${Emulator.AccessSpeed[accessLog.Cycle]}`
-					);
-				}
+		private static FormattedInputSkipKey(key: string): boolean{
+			switch(key){
+				case 'Delete':
+				case 'Backspace':
+				case 'Shift':
+				case 'Control':
+				case 'Alt':
+				case 'Tab':
+					return true;
+			}
+			if(key.indexOf('Arrow') === 0){
+				return true;
+			}
+			if(key.match(/^F\d+$/i)){
+				return true;
+			}
+			return false;
+		}
+
+		// Input in integer format
+		public static IntegerInput(element: HTMLInputElement){
+			element.addEventListener('keydown', (e: KeyboardEvent) => {
+				DomUtility.IntegerInputKeydownEvent(element, e);
+			});
+			element.addEventListener('change', (e: Event) => {
+				DomUtility.IntegerInputChangeEvent(element);
+			});
+			DomUtility.IntegerInputChangeEvent(element);
+		}
+		private static IntegerInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+			const key	= e.key;
+			if(e.getModifierState("Control")){
+				return;
+			}
+			else if(DomUtility.FormattedInputSkipKey(key)){
+				return;
+			}
+			else if(key.length > 1){
+				e.preventDefault();
+			}
+
+			const match	= key.match(/^\d$/i);
+			if(!match){
+				e.preventDefault();
+			}
+		}
+		private static IntegerInputChangeEvent(obj: HTMLInputElement){
+			const value	= obj.value;
+
+			const match	= value.match(/^[\d]+$/i);
+			if(match){
+				const converted		= parseInt(match[0]);
+				obj.setAttribute('_previous', converted.toString());
+			}
+			else{
+				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0') ?? 0;
+				const setValue		= Utility.Format.ToHexString(previousValue);
+				obj.value		= setValue;
+			}
+		}
+
+		// Input in hexadecimal format
+		public static HexadecimalInput(element: HTMLInputElement){
+			element.addEventListener('keydown', (e: KeyboardEvent) => {
+				DomUtility.HexadecimalInputKeydownEvent(element, e);
+			});
+			element.addEventListener('change', (e: Event) => {
+				DomUtility.HexadecimalInputChangeEvent(element);
+			});
+			DomUtility.HexadecimalInputChangeEvent(element);
+		}
+		private static HexadecimalInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+			const key	= e.key;
+			if(e.getModifierState("Control")){
+				return;
+			}
+			else if(DomUtility.FormattedInputSkipKey(key)){
+				return;
+			}
+			else if(key.length > 1){
+				e.preventDefault();
+			}
+
+			const match	= key.match(/^[\dA-F]$/i);
+			if(!match){
+				e.preventDefault();
+			}
+		}
+		private static HexadecimalInputChangeEvent(obj: HTMLInputElement){
+			const value	= obj.value;
+			const digit	= parseInt(obj.getAttribute('maxlength') ?? '0') ?? 0;
+
+			const match	= value.match(/^[\dA-F]+$/i);
+			if(match){
+				const converted		= parseInt(match[0], 16);
+				obj.setAttribute('_previous', Utility.Format.ToHexString(converted, digit));
+			}
+			else{
+				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0', 16) ?? 0;
+				const setValue		= Utility.Format.ToHexString(previousValue, digit);
+				obj.value		= setValue;
 			}
 		}
 	}
