@@ -3523,6 +3523,12 @@ namespace Emulator{
 		public GetExecuteCpuCycle(): number{
 			return this.AccessLog.length;
 		}
+
+		public static AccessLogToString(log: AccessLog){
+			return `[${Utility.Format.PadSpace(AccessType[log.Type], 12)}]`
+			+ ` $${Utility.Format.ToHexString(log.AddressBus, 6)} = $${Utility.Format.ToHexString(log.DataBus, 2)}`
+			+ ` @ ${AccessSpeed[log.Cycle]}`;
+		}
 	}
 
 	export type AccessLog	= {
@@ -5169,14 +5175,23 @@ namespace Application{
 		private static dummyNode	= document.createElement('span');
 		private static dummyInputNode	= document.createElement('input');
 		private static Dom: {[name: string]: HTMLElement}	= {
-			'ErrorMessage':		Main.dummyNode,
-			'AssemblerSource':	Main.dummyNode,
-			'AssemblerOutput':	Main.dummyNode,
-			'HexIntelHex':		Main.dummyNode,
-			'HexSrec':		Main.dummyNode,
-			'AssemblerAssemble':	Main.dummyNode,
-			'AssembledRun':		Main.dummyNode,
-			'CopyUrl':		Main.dummyNode,
+			'ErrorMessage':			Main.dummyNode,
+			'AssemblerSource':		Main.dummyNode,
+			'AssemblerOutput':		Main.dummyNode,
+			'HexIntelHex':			Main.dummyNode,
+			'HexSrec':			Main.dummyNode,
+			'AssemblerAssemble':		Main.dummyNode,
+			'AssembledRun':			Main.dummyNode,
+			'CopyUrl':			Main.dummyNode,
+			'ResultStatistics_Step':	Main.dummyNode,
+			'ResultStatistics_Cycle':	Main.dummyNode,
+			'ResultStatistics_Master':	Main.dummyNode,
+			'ViewerTextLog':		Main.dummyNode,
+			'ViewerTextLog_Log':		Main.dummyNode,
+			'ViewerTableLog':		Main.dummyNode,
+			'ViewerTimeline':		Main.dummyNode,
+			'ViewerHeatmap':		Main.dummyNode,
+			'ViewerWritten':		Main.dummyNode,
 		};
 
 		public static Initialize(){
@@ -5189,6 +5204,7 @@ namespace Application{
 			DomUtility.AllowTab(Main.Dom.AssemblerSource as HTMLInputElement);
 			DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
 			DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
+			DomUtility.ApplyDomEvents('#ViewerSelect input[type="radio"] ', Main.CheckSelectedViewer);
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
 			Main.Dom.CopyUrl.removeAttribute('disabled');
@@ -5203,6 +5219,9 @@ namespace Application{
 					Main.Dom.AssembledRun.click();
 				}
 			}
+
+			Main.ClearResultViewer();
+			Main.UpdateSelectedViewer();
 
 			Main.Dom.ErrorMessage.classList.add('hide');
 		}
@@ -5248,6 +5267,7 @@ namespace Application{
 			Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
 
 			Main.SetAssemblerError(true, []);
+			Main.ClearResultViewer();
 
 			Main.Assembled	= assembled;
 		}
@@ -5293,11 +5313,7 @@ namespace Application{
 				}
 			}
 
-			// TODO: Debug
-			Main.DumpCpuLog(cpu);
-			console.log(`Total Master Cycle: ${cpu.MasterCycleCounter}`);
-			console.log(`Total CPU Cycle: ${cpu.CpuCycleCounter}`);
-			console.log(`Total Step: ${stepCounter}`);
+			Main.UpdateResultViewer(cpu);
 		}
 
 		private static UploadChunk(memory: Emulator.Memory, chunk: Assembler.DataChunk){
@@ -5364,8 +5380,8 @@ namespace Application{
 				return dom ?? Main.dummyInputNode;
 			}
 
-			const setting: Setting	= new Setting;
-			setting.RomMapping		= Main.GetFormRadio<Emulator.RomMapping>('mapping', {
+			const setting: Setting		= new Setting;
+			setting.RomMapping		= DomUtility.GetFormRadio<Emulator.RomMapping>('#SettingForm', 'mapping', {
 				'lorom': Emulator.RomMapping.LoROM,
 				'hirom': Emulator.RomMapping.HiROM,
 			}, Emulator.RomMapping.LoROM);
@@ -5388,15 +5404,6 @@ namespace Application{
 		private static GetFormNumber(dom: HTMLInputElement, base: number, defaultValue: number): number{
 			const value	= parseInt(dom.value, base);
 			return (isNaN(value))? defaultValue : value;
-		}
-		private static GetFormRadio<ReturnType>(name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
-			for(const key in values){
-				const dom	= document.querySelector('#SettingForm input[name="' + name + '"][value="' + key + '"]');
-				if((dom instanceof HTMLInputElement) && dom.checked){
-					return values[key];
-				}
-			}
-			return defaultValue;
 		}
 
 		private static SetSetting(setting: Setting){
@@ -5560,13 +5567,107 @@ namespace Application{
 				console.log(`[${i}] ${instructionLog.GetLogString()}`);
 				for(let j = 0; j < instructionLog.AccessLog.length; j++){
 					const accessLog	= instructionLog.AccessLog[j];
-					console.log(`  [${Utility.Format.PadSpace(Emulator.AccessType[accessLog.Type], 12)}]`
-						+ ` $${Utility.Format.ToHexString(accessLog.AddressBus, 6)} = $${Utility.Format.ToHexString(accessLog.DataBus, 2)}`
-						+ ` @ ${Emulator.AccessSpeed[accessLog.Cycle]}`
-					);
+					console.log('  ' + Emulator.StepLog.AccessLogToString(accessLog));
 				}
 			}
 		}
+
+		private static UpdateSelectedViewer(){
+			const selected	= DomUtility.GetFormRadio<ViewerMode>('#ViewerSelect', 'viewer', {
+				textlog:	ViewerMode.TextLog,
+				tablelog:	ViewerMode.TableLog,
+				timeline:	ViewerMode.Timeline,
+				heatmap:	ViewerMode.Heatmap,
+				written:	ViewerMode.Written,
+			}, ViewerMode.TableLog);
+
+			const viewerList	= [
+				Main.Dom.ViewerTextLog,
+				Main.Dom.ViewerTableLog,
+				Main.Dom.ViewerTimeline,
+				Main.Dom.ViewerHeatmap,
+				Main.Dom.ViewerWritten,
+			];
+
+			viewerList.forEach((viewer) => {
+				viewer.classList.add('hide');
+			});
+
+			let selectedDom		= viewerList[selected];
+			selectedDom.classList.remove('hide');
+		}
+		private static CheckSelectedViewer(element: HTMLElement){
+			element.addEventListener('change', (e: Event) => {
+				Main.UpdateSelectedViewer();
+			});
+		}
+
+		private static ClearResultViewer(){
+			const clearText	= '---';
+			Main.Dom.ResultStatistics_Step.textContent	= clearText;
+			Main.Dom.ResultStatistics_Cycle.textContent	= clearText;
+			Main.Dom.ResultStatistics_Master.textContent	= clearText;
+
+			Main.ClearResultViewer_TextLog();
+			Main.ClearResultViewer_TableLog();
+			Main.ClearResultViewer_Timeline();
+			Main.ClearResultViewer_Heatmap();
+			Main.ClearResultViewer_Written();
+		}
+		private static UpdateResultViewer(cpu: Emulator.Cpu){
+			Main.Dom.ResultStatistics_Step.textContent	= cpu.Logs.length.toString();
+			Main.Dom.ResultStatistics_Cycle.textContent	= cpu.CpuCycleCounter.toString();
+			Main.Dom.ResultStatistics_Master.textContent	= cpu.MasterCycleCounter.toString();
+
+			Main.UpdateResultViewer_TextLog(cpu);
+			Main.UpdateResultViewer_TableLog(cpu);
+			Main.UpdateResultViewer_Timeline(cpu);
+			Main.UpdateResultViewer_Heatmap(cpu);
+			Main.UpdateResultViewer_Written(cpu);
+		}
+		private static ClearResultViewer_TextLog(){
+			Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
+		}
+		private static UpdateResultViewer_TextLog(cpu: Emulator.Cpu){
+			let logStrings: string[]	= [];
+
+			for(let s = 0; s < cpu.Logs.length; s++){
+				const step	= cpu.Logs[s];
+				logStrings.push(step.GetLogString());
+
+				for(let c = 0; c < step.AccessLog.length; c++){
+					const accessLog	= step.AccessLog[c];
+					logStrings.push('  ' + Emulator.StepLog.AccessLogToString(accessLog));
+				}
+			}
+
+			Main.SetTextareaStrings(Main.Dom.ViewerTextLog_Log, logStrings);
+		}
+		private static ClearResultViewer_TableLog(){
+			// TODO: Implements
+		}
+		private static UpdateResultViewer_TableLog(cpu: Emulator.Cpu){
+			// TODO: Implements
+		}
+		private static ClearResultViewer_Timeline(){
+			// TODO: Implements
+		}
+		private static UpdateResultViewer_Timeline(cpu: Emulator.Cpu){
+			// TODO: Implements
+		}
+		private static ClearResultViewer_Heatmap(){
+			// TODO: Implements
+		}
+		private static UpdateResultViewer_Heatmap(cpu: Emulator.Cpu){
+			// TODO: Implements
+		}
+		private static ClearResultViewer_Written(){
+			// TODO: Implements
+		}
+		private static UpdateResultViewer_Written(cpu: Emulator.Cpu){
+			// TODO: Implements
+		}
+
 	}
 
 	class Setting{
@@ -5595,6 +5696,22 @@ namespace Application{
 	}
 
 	class DomUtility{
+		public static RemoveCildren(element: HTMLElement){
+			for(let i = element.children.length - 1; 0 <= i; i--){
+				element.children[i].remove();
+			}
+		}
+
+		public static GetFormRadio<ReturnType>(selector: string, name: string, values: {[key: string]: ReturnType}, defaultValue: ReturnType): ReturnType{
+			for(const key in values){
+				const dom	= document.querySelector(`${selector} input[name="${name}"][value="${key}"]`);
+				if((dom instanceof HTMLInputElement) && dom.checked){
+					return values[key];
+				}
+			}
+			return defaultValue;
+		}
+
 		public static ApplyDomEvents<ElementType extends Element>(selector: string, domEvent: (element: ElementType) => void){
 			const doms	= document.querySelectorAll<ElementType>(selector);
 			doms.forEach((dom) => {
@@ -5608,15 +5725,15 @@ namespace Application{
 				DomUtility.AllowTabEvent(element, e);
 			});
 		}
-		private static AllowTabEvent(obj: HTMLInputElement, e: KeyboardEvent){
+		private static AllowTabEvent(element: HTMLInputElement, e: KeyboardEvent){
 			if(e.key !== 'Tab'){
 				return;
 			}
 			e.preventDefault();
 
-			let value		= obj.value;
-			const selectStart	= obj.selectionStart ?? 0;
-			const selectEnd		= obj.selectionEnd ?? 0;
+			let value		= element.value;
+			const selectStart	= element.selectionStart ?? 0;
+			const selectEnd		= element.selectionEnd ?? 0;
 			const selectLeft	= value.substring(0, selectStart);
 			let selectContent	= value.substring(selectStart, selectEnd);
 			const selectRight	= value.substring(selectEnd);
@@ -5626,9 +5743,9 @@ namespace Application{
 				const replaceCount	= selectContent.length - replaceBefore;
 
 				value			= selectLeft + '\t' + selectContent + selectRight;
-				obj.value		= value;
-				obj.selectionStart	= selectStart + 1;
-				obj.selectionEnd	= selectEnd + 1 + replaceCount;
+				element.value		= value;
+				element.selectionStart	= selectStart + 1;
+				element.selectionEnd	= selectEnd + 1 + replaceCount;
 			}
 			else{
 				const replaceBefore	= selectContent.length;
@@ -5637,9 +5754,9 @@ namespace Application{
 				const replaceCount	= replaceBefore - selectContent.length;
 
 				value			= selectLeft + selectContent + selectRight;
-				obj.value		= value;
-				obj.selectionStart	= selectStart;
-				obj.selectionEnd	= selectEnd - replaceCount;
+				element.value		= value;
+				element.selectionStart	= selectStart;
+				element.selectionEnd	= selectEnd - replaceCount;
 			}
 		}
 
@@ -5672,7 +5789,7 @@ namespace Application{
 			});
 			DomUtility.IntegerInputChangeEvent(element);
 		}
-		private static IntegerInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+		private static IntegerInputKeydownEvent(element: HTMLInputElement, e: KeyboardEvent){
 			const key	= e.key;
 			if(e.getModifierState("Control")){
 				return;
@@ -5689,18 +5806,18 @@ namespace Application{
 				e.preventDefault();
 			}
 		}
-		private static IntegerInputChangeEvent(obj: HTMLInputElement){
-			const value	= obj.value;
+		private static IntegerInputChangeEvent(element: HTMLInputElement){
+			const value	= element.value;
 
 			const match	= value.match(/^[\d]+$/i);
 			if(match){
 				const converted		= parseInt(match[0]);
-				obj.setAttribute('_previous', converted.toString());
+				element.setAttribute('_previous', converted.toString());
 			}
 			else{
-				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0') ?? 0;
+				const previousValue	= parseInt(element.getAttribute('_previous') ?? '0') ?? 0;
 				const setValue		= Utility.Format.ToHexString(previousValue);
-				obj.value		= setValue;
+				element.value		= setValue;
 			}
 		}
 
@@ -5714,7 +5831,7 @@ namespace Application{
 			});
 			DomUtility.HexadecimalInputChangeEvent(element);
 		}
-		private static HexadecimalInputKeydownEvent(obj: HTMLInputElement, e: KeyboardEvent){
+		private static HexadecimalInputKeydownEvent(element: HTMLInputElement, e: KeyboardEvent){
 			const key	= e.key;
 			if(e.getModifierState("Control")){
 				return;
@@ -5731,21 +5848,29 @@ namespace Application{
 				e.preventDefault();
 			}
 		}
-		private static HexadecimalInputChangeEvent(obj: HTMLInputElement){
-			const value	= obj.value;
-			const digit	= parseInt(obj.getAttribute('maxlength') ?? '0') ?? 0;
+		private static HexadecimalInputChangeEvent(element: HTMLInputElement){
+			const value	= element.value;
+			const digit	= parseInt(element.getAttribute('maxlength') ?? '0') ?? 0;
 
 			const match	= value.match(/^[\dA-F]+$/i);
 			if(match){
 				const converted		= parseInt(match[0], 16);
-				obj.setAttribute('_previous', Utility.Format.ToHexString(converted, digit));
+				element.setAttribute('_previous', Utility.Format.ToHexString(converted, digit));
 			}
 			else{
-				const previousValue	= parseInt(obj.getAttribute('_previous') ?? '0', 16) ?? 0;
+				const previousValue	= parseInt(element.getAttribute('_previous') ?? '0', 16) ?? 0;
 				const setValue		= Utility.Format.ToHexString(previousValue, digit);
-				obj.value		= setValue;
+				element.value		= setValue;
 			}
 		}
+	}
+
+	enum ViewerMode{
+		TextLog,
+		TableLog,
+		Timeline,
+		Heatmap,
+		Written
 	}
 
 }

@@ -10,6 +10,7 @@ This is **not** intended to emulate SNES perfectly.
 ## ToDo  
 
 * Add viewer
+	* Table log
 	* Timeline
 	* Heatmap
 	* Written memory
