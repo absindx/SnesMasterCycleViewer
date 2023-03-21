@@ -5,6 +5,7 @@
   <title>SNES master cycle viewer</title>
   <!-- <link rel="shortcut icon" href="favicon.ico"> -->
   <link rel="stylesheet" type="text/css" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.11/dist/clipboard.min.js"></script>
  </head>
  <body>
   <header>
@@ -83,7 +84,7 @@ Start:		LDA	#$55
      <div id="AssemblerController">
       <input id="AssemblerAssemble" type="button" value="Assemble" disabled>
       <input id="AssembledRun"      type="button" value="Run"      disabled>
-
+      <input id="CopyUrl"           type="button" value="Copy URL" disabled>
      </div>
     </article>
    </section>
@@ -101,6 +102,12 @@ Start:		LDA	#$55
   <script src="main.js"></script>
   <script>
    Application.Main.Initialize();
+   new ClipboardJS('#CopyUrl', {
+    text: function(trigger){
+     return Application.Main.GetCopyUrl();
+    }
+   });
+
   </script>
  </body>
 </html>

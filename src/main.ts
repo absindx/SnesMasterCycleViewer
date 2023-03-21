@@ -5176,6 +5176,7 @@ namespace Application{
 			'HexSrec':		Main.dummyNode,
 			'AssemblerAssemble':	Main.dummyNode,
 			'AssembledRun':		Main.dummyNode,
+			'CopyUrl':		Main.dummyNode,
 		};
 
 		public static Initialize(){
@@ -5190,6 +5191,7 @@ namespace Application{
 			DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
+			Main.Dom.CopyUrl.removeAttribute('disabled');
 			Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
 			Main.Dom.AssembledRun.addEventListener('click', Main.Run);
 
@@ -5519,6 +5521,28 @@ namespace Application{
 			}
 
 			return setting;
+		}
+		public static GetCopyUrl(): string{
+			let url		= location.origin + location.pathname;
+
+			const setting	= Main.GetSetting();
+
+			function booleanToParameter(value: boolean): string{
+				return (value)? '1' : '0';
+			}
+
+			url		+= `?rm=${ (setting.RomMapping === Emulator.RomMapping.HiROM)? 'hi' : 'lo' }`;
+			url		+= `&fr=${ booleanToParameter(setting.FastRom) }`;
+			url		+= `&sfe=${ booleanToParameter(setting.StatusFlagE) }`;
+			url		+= `&sa=${ Utility.Format.ToHexString(setting.StartAddress, 6) }`;
+			url		+= `&mc=${ setting.MaxCycle.toString() }`;
+			url		+= `&esw=${ booleanToParameter(setting.EmulationStopWAI) }`;
+			url		+= `&esb=${ booleanToParameter(setting.EmulationStopBRK) }`;
+			url		+= `&esc=${ booleanToParameter(setting.EmulationStopCOP) }`;
+			url		+= `&esr=${ booleanToParameter(setting.EmulationStopWDM) }`;
+			url		+= `&src=${ Main.EncodeSource(setting.Source) }`;
+
+			return url;
 		}
 
 		private static EncodeSource(src: string): string{
