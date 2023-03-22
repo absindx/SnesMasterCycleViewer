@@ -3861,16 +3861,22 @@ namespace Assembler{
 			const [word, remain]	= Assembler.SplitOnce(line);
 			const match		= line.match(/^([^\s]+):\s*(.*)/);
 
+			// skip local define
+			if(line.match(/^.[^\s=,]+\s*=/)){
+				// local define
+				return null;
+			}
+
 			if(match){
 				// global label
 				const globalLabel	= match[1];
 				const remain		= match[2];
 				if(globalLabel.match(/[\+\-*/%<>\|\^#$\.]/)){
-					pushError('Invalid label name.');
+					pushError(`Invalid label name. "${globalLabel}"`);
 					return '';
 				}
 				else if(this.LabelList[globalLabel]){
-					pushError('Global label name conflict.');
+					pushError(`Global label name conflict. "${globalLabel}"`);
 					return '';
 				}
 				const scope			= new ScopeItem();
@@ -3883,15 +3889,19 @@ namespace Assembler{
 				// local label
 				const localLabel		= word;
 				if(localLabel.match(/[\+\-*/%<>\|\^#$]/)){
-					pushError('Invalid label name.');
+					pushError(`Invalid label name. "${localLabel}"`);
 					return '';
 				}
 				else if((!this.NowScopeName) || (!this.LabelList[this.NowScopeName])){
-					pushError('Local label used in global scope.');
+					pushError(`Local label used in global scope. "${localLabel}"`);
 					return '';
 				}
 				else if(this.LabelList[this.NowScopeName].LocalScope[localLabel]){
-					pushError('Local label name conflict.');
+					pushError(`Local label name conflict. "${this.NowScopeName}" > "${localLabel}"`);
+					return '';
+				}
+				else if(this.LabelList[this.NowScopeName].LocalDefine[localLabel]){
+					pushError(`Local label name conflict. "${this.NowScopeName}" > "${localLabel}"`);
 					return '';
 				}
 				const label			= new LocalScopeItem();
@@ -3974,7 +3984,7 @@ namespace Assembler{
 			pushToken: (tokenType: CodeTokenType, options: (string | number | TokenOption | null)[]) => void,
 			pushError: (message: string) => void,
 		): string | null{
-			const defineMatch	= line.match(/([^\s,]+)\s*=\s*([^,]+)(.*)/);
+			const defineMatch	= line.match(/([^\s=,]+)\s*=\s*([^=,]+)(.*)/);
 			if(!defineMatch){
 				return null;
 			}
@@ -3984,19 +3994,41 @@ namespace Assembler{
 			const remain		= defineMatch[3];
 
 			if(defineName.match(/[+\-*/<>\(\)\[\]\{\}\"#$%&\'\|^]/)){
-				pushError('Invalid define name.');
+				pushError(`Invalid define name. "${defineName}"`);
 				return '';
 			}
-			else if(this.DefineList[defineName]){
-				pushError('Define name conflict.');
-				return '';
+			if(defineName[0] !== '.'){
+				if(this.DefineList[defineName]){
+					pushError(`Define name conflict. "${defineName}"`);
+					return '';
+				}
+
+				const define	= new DefineItem();
+				define.Value	= defineValue;
+				this.DefineList[defineName]	= define;
+
+				pushToken(CodeTokenType.Define, [defineName]);
 			}
+			else{
+				if((!this.NowScopeName) || (!this.LabelList[this.NowScopeName])){
+					pushError(`Local define used in global scope. "${defineName}"`);
+					return '';
+				}
+				else if(this.LabelList[this.NowScopeName].LocalDefine[defineName]){
+					pushError(`Local define name conflict. "${this.NowScopeName}" > "${defineName}"`);
+					return '';
+				}
+				else if(this.LabelList[this.NowScopeName].LocalScope[defineName]){
+					pushError(`Local define name conflict. "${this.NowScopeName}" > "${defineName}"`);
+					return '';
+				}
 
-			const define	= new DefineItem();
-			define.Value	= defineValue;
-			this.DefineList[defineName]	= define;
+				const define	= new DefineItem();
+				define.Value	= defineValue;
+				this.LabelList[this.NowScopeName].LocalDefine[defineName]	= define;
 
-			pushToken(CodeTokenType.Define, [defineName]);
+				pushToken(CodeTokenType.DefineLocal, [defineName]);
+			}
 
 			return remain;
 		}
@@ -4116,6 +4148,7 @@ namespace Assembler{
 						this.NowAddress	+= length;
 						break;
 					case CodeTokenType.Define:			// "Xxx=YY"
+					case CodeTokenType.DefineLocal:			// ".Xxx=YY"
 						// NOP
 						break;
 				}
@@ -4394,6 +4427,7 @@ namespace Assembler{
 						this.PushInstructionBinary(chunk, instruction, pushError);
 						break;
 					case CodeTokenType.Define:			// "Xxx=YY"
+					case CodeTokenType.DefineLocal:			// ".Xxx=YY"
 						// NOP
 						break;
 				}
@@ -4705,20 +4739,32 @@ namespace Assembler{
 				return [operatorFunction(leftValue, rightValue), 'expression'];
 			}
 
-			// local label
+			// local label or define
 			if(name[0] === '.'){
 				const scope	= this.LabelList[this.NowScopeName];
 				if(!scope){
 					return [null, 'Scope resolution failed.'];
 				}
 				const label	= scope.LocalScope[name];
-				if(!label){
-					return [null, `Failed to resolve local label "${name}".`];
+				const define	= scope.LocalDefine[name];
+				if(!label && !define){
+					return [null, `Failed to resolve local label or define "${name}".`];
 				}
-				if(label.Address === InvalidAddress){
-					return [null, 'Invalid address local label.'];
+				if(label){
+					if(label.Address === InvalidAddress){
+						return [null, 'Invalid address local label.'];
+					}
+					return [label.Address, 'local label'];
 				}
-				return [label.Address, 'local label'];
+				else{
+					const [value, message]	= this.ResolveValue(define.Value, depth);
+					if((value !== null) && (value !== InvalidAddress)){
+						return [value, 'local define']
+					}
+					else{
+						return [null, message];
+					}
+				}
 			}
 
 			// global label
@@ -5011,6 +5057,7 @@ namespace Assembler{
 		LabelMinus,		// "-"
 		Instruction,		// "LDA"
 		Define,			// "Xxx=YY"
+		DefineLocal,		// ".Xxx=YY"
 	}
 	class Token{
 		TokenType: CodeTokenType	= CodeTokenType.Invalid;
@@ -5048,6 +5095,7 @@ namespace Assembler{
 	class ScopeItem{
 		Address: number	= InvalidAddress;
 		LocalScope: { [LocalLabel: string]: LocalScopeItem}	= {};
+		LocalDefine: { [Define: string]: DefineItem }		= {};
 	}
 	class LocalScopeItem{
 		Address: number	= InvalidAddress;
