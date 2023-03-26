@@ -366,6 +366,7 @@ namespace Emulator{
 					log.AccessLog.push({
 						AddressBus: cpu.Memory.AddressBus,
 						DataBus: cpu.Memory.DataBus,
+						Region: dummyAccess[1].Region,
 						Type: accessType,
 						Cycle: AccessSpeed.Fast,
 					});
@@ -375,6 +376,7 @@ namespace Emulator{
 					log.AccessLog.push({
 						AddressBus: cpu.Memory.AddressBus,
 						DataBus: cpu.Memory.DataBus,
+						Region: dummyAccess[1].Region,
 						Type: accessType,
 						Cycle: AccessSpeed.Fast,
 					});
@@ -389,6 +391,7 @@ namespace Emulator{
 				log.AccessLog.push({
 					AddressBus: address,
 					DataBus: value,
+					Region: result[1].Region,
 					Type: result[1].Type,
 					Cycle: result[1].Cycle,
 				});
@@ -402,6 +405,7 @@ namespace Emulator{
 				log.AccessLog.push({
 					AddressBus: address,
 					DataBus: value,
+					Region: result[1].Region,
 					Type: result[1].Type,
 					Cycle: result[1].Cycle,
 				});
@@ -2454,6 +2458,7 @@ namespace Emulator{
 			return [access, {
 				AddressBus: address,
 				DataBus: access.Data,
+				Region: access.Region,
 				Type: accessType,
 				Cycle: access.Speed,
 			}];
@@ -2464,6 +2469,7 @@ namespace Emulator{
 			return [access, {
 				AddressBus: address,
 				DataBus: access.Data,
+				Region: access.Region,
 				Type: accessType,
 				Cycle: access.Speed,
 			}];
@@ -2474,6 +2480,7 @@ namespace Emulator{
 			return [access, {
 				AddressBus: address,
 				DataBus: value,
+				Region: access.Region,
 				Type: accessType,
 				Cycle: access.Speed,
 			}];
@@ -3551,6 +3558,7 @@ namespace Emulator{
 	export type AccessLog	= {
 		AddressBus: number;
 		DataBus: number;
+		Region: AccessRegion;
 		Type: AccessType;
 		Cycle: AccessSpeed;
 	};
@@ -5673,28 +5681,46 @@ namespace Application{
 			});
 		}
 
+		private static ClearResultViewerFunctions: (() => void)[]	= [
+			Main.ClearResultViewer_TextLog,
+			Main.ClearResultViewer_TableLog,
+			Main.ClearResultViewer_Timeline,
+			Main.ClearResultViewer_Heatmap,
+			Main.ClearResultViewer_Written,
+		];
+		private static UpdateResultViewerFunctions: ((cpu: Emulator.Cpu) => void)[]	= [
+			Main.UpdateResultViewer_TextLog,
+			Main.UpdateResultViewer_TableLog,
+			Main.UpdateResultViewer_Timeline,
+			Main.UpdateResultViewer_Heatmap,
+			Main.UpdateResultViewer_Written,
+		];
 		private static ClearResultViewer(){
 			const clearText	= '---';
 			Main.Dom.ResultStatistics_Step.textContent	= clearText;
 			Main.Dom.ResultStatistics_Cycle.textContent	= clearText;
 			Main.Dom.ResultStatistics_Master.textContent	= clearText;
 
-			Main.ClearResultViewer_TextLog();
-			Main.ClearResultViewer_TableLog();
-			Main.ClearResultViewer_Timeline();
-			Main.ClearResultViewer_Heatmap();
-			Main.ClearResultViewer_Written();
+			Main.ClearResultViewerFunctions.forEach((clearFunction) => {
+				try{
+					clearFunction();
+				}
+				catch{}
+			});
 		}
 		private static UpdateResultViewer(cpu: Emulator.Cpu){
+			Main.ClearResultViewer();
+
 			Main.Dom.ResultStatistics_Step.textContent	= cpu.Logs.length.toString();
 			Main.Dom.ResultStatistics_Cycle.textContent	= cpu.CpuCycleCounter.toString();
 			Main.Dom.ResultStatistics_Master.textContent	= cpu.MasterCycleCounter.toString();
 
-			Main.UpdateResultViewer_TextLog(cpu);
-			Main.UpdateResultViewer_TableLog(cpu);
-			Main.UpdateResultViewer_Timeline(cpu);
-			Main.UpdateResultViewer_Heatmap(cpu);
-			Main.UpdateResultViewer_Written(cpu);
+			Main.UpdateResultViewerFunctions.forEach((updateFunction) => {
+				try{
+					updateFunction(cpu);
+				}
+				catch{}
+			});
 		}
 		private static ClearResultViewer_TextLog(){
 			Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
@@ -5733,10 +5759,120 @@ namespace Application{
 			// TODO: Implements
 		}
 		private static ClearResultViewer_Written(){
-			// TODO: Implements
+			const tableBody	= document.querySelector<HTMLElement>('#ViewerWritten_Table tbody');
+			DomUtility.RemoveCildren(tableBody);
+
+			if(tableBody){
+				const row		= document.createElement('tr');
+				tableBody.appendChild(row);
+
+				function appendDummyChild(){
+					const cell		= document.createElement('td');
+					cell.textContent	= '---'
+					cell.classList.add('center');
+					row.appendChild(cell);
+				}
+				appendDummyChild();
+				appendDummyChild();
+				appendDummyChild();
+				appendDummyChild();
+				appendDummyChild();
+			}
 		}
 		private static UpdateResultViewer_Written(cpu: Emulator.Cpu){
-			// TODO: Implements
+			const tableBody	= document.querySelector<HTMLElement>('#ViewerWritten_Table tbody');
+			if(!tableBody){
+				return;
+			}
+
+			const writeAccess: Viewer_Written_Log[]			= [];
+			const writeHistory: {[address: number]: number[]}	= {};
+
+			// take out write access
+			for(let s = 0; s < cpu.Logs.length; s++){
+				const step	= cpu.Logs[s];
+				let cycle	= step.MasterCycle;
+
+				for(let c = 0; c < step.AccessLog.length; c++){
+					const accessLog	= step.AccessLog[c];
+
+					switch(accessLog.Type){
+						case Emulator.AccessType.Write:
+						case Emulator.AccessType.WriteDummy:
+						case Emulator.AccessType.PushStack:
+						{
+							const history	= writeHistory[accessLog.AddressBus] ?? [];
+							writeHistory[accessLog.AddressBus]	= history;
+
+							writeAccess.push({
+								Region: accessLog.Region,
+								Address: accessLog.AddressBus,
+								Value: accessLog.DataBus,
+								Cycle: cycle,
+								Type: accessLog.Type,
+								Repeat: history.length,
+							});
+							history.push(accessLog.DataBus);
+							break;
+						}
+					}
+
+					cycle	+= accessLog.Cycle;
+				}
+			}
+
+			if(writeAccess.length <= 0){
+				return;
+			}
+			DomUtility.RemoveCildren(tableBody);
+
+			writeAccess.sort((a, b) => a.Address - b.Address);
+
+			// add rows
+			function createRow(parent: HTMLTableRowElement, className: string): HTMLTableCellElement{
+				const cell		= document.createElement('td');
+				parent.appendChild(cell);
+				cell.classList.add(className);
+				return cell
+			}
+			function addHistory(cell: HTMLTableCellElement, content: string, highlight: boolean){
+				const node		= document.createElement('span');
+				node.textContent	= content;
+				if(highlight){
+					node.classList.add('highlight');
+				}
+				cell.appendChild(node);
+			}
+			for(let i = 0; i < writeAccess.length; i++){
+				const access		= writeAccess[i];
+				const history		= writeHistory[access.Address] ?? [];
+				if(access.Repeat < (history.length - 1)){
+					continue;
+				}
+
+				const row		= document.createElement('tr');
+				const cellRegion	= createRow(row, 'region');
+				const cellAddress	= createRow(row, 'address');
+				const cellValue		= createRow(row, 'value');
+				const cellTiming	= createRow(row, 'timing');
+				const cellHistory	= createRow(row, 'history');
+				tableBody.appendChild(row);
+
+				cellRegion.textContent	= Emulator.AccessRegion[access.Region];
+				cellAddress.textContent	= `$${Utility.Format.ToHexString(access.Address, 6)}`;
+				cellValue.textContent	= `$${Utility.Format.ToHexString(access.Value, 2)}`;
+				cellTiming.textContent	= `${access.Cycle}`;
+
+				let isFirst		= true;
+				for(let h = 0; h < history.length; h++){
+					if(!isFirst){
+						addHistory(cellHistory, ', ', false);
+					}
+					isFirst	= false;
+					addHistory(cellHistory, `$${Utility.Format.ToHexString(history[h], 2)}`, access.Repeat === h);
+				}
+			}
+
 		}
 
 	}
@@ -5767,7 +5903,10 @@ namespace Application{
 	}
 
 	class DomUtility{
-		public static RemoveCildren(element: HTMLElement){
+		public static RemoveCildren(element: HTMLElement | null){
+			if(!element){
+				return;
+			}
 			for(let i = element.children.length - 1; 0 <= i; i--){
 				element.children[i].remove();
 			}
@@ -5942,6 +6081,15 @@ namespace Application{
 		Timeline,
 		Heatmap,
 		Written
+	}
+
+	class Viewer_Written_Log{
+		Region: Emulator.AccessRegion	= Emulator.AccessRegion.MainRAM;
+		Address: number			= 0;
+		Value: number			= 0;
+		Cycle: number			= 0;
+		Type: Emulator.AccessType	= Emulator.AccessType.Write;
+		Repeat: number			= 0;
 	}
 
 }

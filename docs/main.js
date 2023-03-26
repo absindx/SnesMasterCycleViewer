@@ -297,6 +297,7 @@ var Emulator;
             const startPC = this.Registers.PC;
             const opcode = this.FetchProgramByte(AccessType.FetchOpcode);
             log.Instruction = opcode[0].Data;
+            log.Source = opcode[0].Source;
             log.AccessLog.push(opcode[1]);
             this.CpuCycleCounter++;
             yield;
@@ -311,6 +312,7 @@ var Emulator;
                     log.AccessLog.push({
                         AddressBus: cpu.Memory.AddressBus,
                         DataBus: cpu.Memory.DataBus,
+                        Region: dummyAccess[1].Region,
                         Type: accessType,
                         Cycle: AccessSpeed.Fast,
                     });
@@ -320,6 +322,7 @@ var Emulator;
                     log.AccessLog.push({
                         AddressBus: cpu.Memory.AddressBus,
                         DataBus: cpu.Memory.DataBus,
+                        Region: dummyAccess[1].Region,
                         Type: accessType,
                         Cycle: AccessSpeed.Fast,
                     });
@@ -333,6 +336,7 @@ var Emulator;
                 log.AccessLog.push({
                     AddressBus: address,
                     DataBus: value,
+                    Region: result[1].Region,
                     Type: result[1].Type,
                     Cycle: result[1].Cycle,
                 });
@@ -345,6 +349,7 @@ var Emulator;
                 log.AccessLog.push({
                     AddressBus: address,
                     DataBus: value,
+                    Region: result[1].Region,
                     Type: result[1].Type,
                     Cycle: result[1].Cycle,
                 });
@@ -2066,6 +2071,7 @@ var Emulator;
             return [access, {
                     AddressBus: address,
                     DataBus: access.Data,
+                    Region: access.Region,
                     Type: accessType,
                     Cycle: access.Speed,
                 }];
@@ -2075,6 +2081,7 @@ var Emulator;
             return [access, {
                     AddressBus: address,
                     DataBus: access.Data,
+                    Region: access.Region,
                     Type: accessType,
                     Cycle: access.Speed,
                 }];
@@ -2084,6 +2091,7 @@ var Emulator;
             return [access, {
                     AddressBus: address,
                     DataBus: value,
+                    Region: access.Region,
                     Type: accessType,
                     Cycle: access.Speed,
                 }];
@@ -2388,6 +2396,7 @@ var Emulator;
     class Memory {
         constructor() {
             this.AddressSpace = {};
+            this.SourceSpace = {};
             this.ROMMapping = RomMapping.LoROM;
             this.IsFastROM = false;
             this.CpuRegister = new CpuRegister();
@@ -2403,7 +2412,7 @@ var Emulator;
             }
         }
         ReadByte(address) {
-            var _a;
+            var _a, _b;
             const [region, realAddress] = this.ToRealAddress(address);
             const [dataIO, maskIO] = this.HookIORead(realAddress);
             let data = (this.DataBus & (~maskIO)) | (dataIO & maskIO);
@@ -2413,10 +2422,12 @@ var Emulator;
             }
             data = Utility.Type.ToByte(data);
             const speed = this.UpdateBus(address, data);
+            const source = (_b = this.SourceSpace[realAddress]) !== null && _b !== void 0 ? _b : null;
             const result = {
                 Region: region,
                 Data: data,
                 Speed: speed,
+                Source: source,
             };
             return result;
         }
@@ -2434,6 +2445,16 @@ var Emulator;
                 Speed: speed,
             };
             return result;
+        }
+        WriteSourceByte(address, data, source) {
+            const [region, realAddress] = this.ToRealAddress(address);
+            const enableRegion = (region !== AccessRegion.OpenBus) && (region !== AccessRegion.IO);
+            if (enableRegion) {
+                this.AddressSpace[realAddress] = Utility.Type.ToByte(data);
+                if (source) {
+                    this.SourceSpace[realAddress] = source;
+                }
+            }
         }
         ToRealAddress(address) {
             const bank = Utility.Type.ToByte(address >> 16);
@@ -2503,38 +2524,30 @@ var Emulator;
         HookIOWrite(address, data) {
             switch (address) {
                 case 0x00210D:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.BG1HOFS = this.Mode7Latch & 0x1FFF;
+                    this.PpuRegister.BG1HOFS = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
                 case 0x00210E:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.BG1VOFS = this.Mode7Latch & 0x1FFF;
+                    this.PpuRegister.BG1VOFS = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
                 case 0x00211B:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7A = this.Mode7Latch;
+                    this.PpuRegister.M7A = this.UpdateMode7Latch(data);
                     this.PpuRegister.StartMultiplication();
                     return true;
                 case 0x00211C:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7B = this.Mode7Latch;
+                    this.PpuRegister.M7B = this.UpdateMode7Latch(data);
                     this.PpuRegister.StartMultiplication();
                     return true;
                 case 0x00211D:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7C = this.Mode7Latch;
+                    this.PpuRegister.M7C = this.UpdateMode7Latch(data);
                     return true;
                 case 0x00210E:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7D = this.Mode7Latch;
+                    this.PpuRegister.M7D = this.UpdateMode7Latch(data);
                     return true;
                 case 0x00211F:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7X = this.Mode7Latch & 0x1FFF;
+                    this.PpuRegister.M7X = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
                 case 0x002120:
-                    this.UpdateMode7Latch(data);
-                    this.PpuRegister.M7Y = this.Mode7Latch & 0x1FFF;
+                    this.PpuRegister.M7Y = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
                 case 0x004202:
                     this.CpuRegister.WRMPYA = data;
@@ -2642,6 +2655,7 @@ var Emulator;
         UpdateMode7Latch(value) {
             value = Utility.Type.ToByte(value);
             this.Mode7Latch = Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
+            return this.Mode7Latch;
         }
         ClockIO() {
             this.PpuRegister.Step();
@@ -3116,9 +3130,9 @@ var Emulator;
             this.MasterCycle = 0;
             this.CpuCycle = 0;
             this.InstructionLength = 0;
-            this.SourceLineNumber = -1;
             this.Registers = new Registers();
             this.AccessLog = [];
+            this.Source = null;
         }
         GetLogString() {
             return `${Instruction[this.Instruction]} `
@@ -3328,18 +3342,14 @@ var Assembler;
             const pushToken = (tokenType, options) => {
                 this.Tokens.push({
                     TokenType: tokenType,
-                    File: file,
-                    Line: lineNumber + 1,
-                    Source: lines[lineNumber],
+                    SourceInformation: new SourceMapping(file, lineNumber + 1, lines[lineNumber]),
                     Address: 0,
                     Options: options,
                 });
             };
             const pushError = (message) => {
                 this.ErrorMessages.push({
-                    File: file,
-                    Line: lineNumber + 1,
-                    Source: lines[lineNumber],
+                    SourceInformation: new SourceMapping(file, lineNumber + 1, lines[lineNumber]),
                     Message: message,
                 });
             };
@@ -3437,15 +3447,18 @@ var Assembler;
         CheckLabel(line, pushToken, pushError) {
             const [word, remain] = Assembler.SplitOnce(line);
             const match = line.match(/^([^\s]+):\s*(.*)/);
+            if (line.match(/^.[^\s=,]+\s*=/)) {
+                return null;
+            }
             if (match) {
                 const globalLabel = match[1];
                 const remain = match[2];
                 if (globalLabel.match(/[\+\-*/%<>\|\^#$\.]/)) {
-                    pushError('Invalid label name.');
+                    pushError(`Invalid label name. "${globalLabel}"`);
                     return '';
                 }
                 else if (this.LabelList[globalLabel]) {
-                    pushError('Global label name conflict.');
+                    pushError(`Global label name conflict. "${globalLabel}"`);
                     return '';
                 }
                 const scope = new ScopeItem();
@@ -3457,15 +3470,19 @@ var Assembler;
             else if (word[0] === '.') {
                 const localLabel = word;
                 if (localLabel.match(/[\+\-*/%<>\|\^#$]/)) {
-                    pushError('Invalid label name.');
+                    pushError(`Invalid label name. "${localLabel}"`);
                     return '';
                 }
                 else if ((!this.NowScopeName) || (!this.LabelList[this.NowScopeName])) {
-                    pushError('Local label used in global scope.');
+                    pushError(`Local label used in global scope. "${localLabel}"`);
                     return '';
                 }
                 else if (this.LabelList[this.NowScopeName].LocalScope[localLabel]) {
-                    pushError('Local label name conflict.');
+                    pushError(`Local label name conflict. "${this.NowScopeName}" > "${localLabel}"`);
+                    return '';
+                }
+                else if (this.LabelList[this.NowScopeName].LocalDefine[localLabel]) {
+                    pushError(`Local label name conflict. "${this.NowScopeName}" > "${localLabel}"`);
                     return '';
                 }
                 const label = new LocalScopeItem();
@@ -3533,7 +3550,7 @@ var Assembler;
             return null;
         }
         CheckDefine(line, pushToken, pushError) {
-            const defineMatch = line.match(/([^\s,]+)\s*=\s*([^,]+)(.*)/);
+            const defineMatch = line.match(/([^\s=,]+)\s*=\s*([^=,]+)(.*)/);
             if (!defineMatch) {
                 return null;
             }
@@ -3541,26 +3558,44 @@ var Assembler;
             const defineValue = defineMatch[2];
             const remain = defineMatch[3];
             if (defineName.match(/[+\-*/<>\(\)\[\]\{\}\"#$%&\'\|^]/)) {
-                pushError('Invalid define name.');
+                pushError(`Invalid define name. "${defineName}"`);
                 return '';
             }
-            else if (this.DefineList[defineName]) {
-                pushError('Define name conflict.');
-                return '';
+            if (defineName[0] !== '.') {
+                if (this.DefineList[defineName]) {
+                    pushError(`Define name conflict. "${defineName}"`);
+                    return '';
+                }
+                const define = new DefineItem();
+                define.Value = defineValue;
+                this.DefineList[defineName] = define;
+                pushToken(CodeTokenType.Define, [defineName]);
             }
-            const define = new DefineItem();
-            define.Value = defineValue;
-            this.DefineList[defineName] = define;
-            pushToken(CodeTokenType.Define, [defineName]);
+            else {
+                if ((!this.NowScopeName) || (!this.LabelList[this.NowScopeName])) {
+                    pushError(`Local define used in global scope. "${defineName}"`);
+                    return '';
+                }
+                else if (this.LabelList[this.NowScopeName].LocalDefine[defineName]) {
+                    pushError(`Local define name conflict. "${this.NowScopeName}" > "${defineName}"`);
+                    return '';
+                }
+                else if (this.LabelList[this.NowScopeName].LocalScope[defineName]) {
+                    pushError(`Local define name conflict. "${this.NowScopeName}" > "${defineName}"`);
+                    return '';
+                }
+                const define = new DefineItem();
+                define.Value = defineValue;
+                this.LabelList[this.NowScopeName].LocalDefine[defineName] = define;
+                pushToken(CodeTokenType.DefineLocal, [defineName]);
+            }
             return remain;
         }
         ConfirmAddress() {
             let token;
             const pushError = (message) => {
                 this.ErrorMessages.push({
-                    File: token.File,
-                    Line: token.Line,
-                    Source: token.Source,
+                    SourceInformation: token.SourceInformation,
                     Message: message,
                 });
             };
@@ -3665,6 +3700,7 @@ var Assembler;
                         this.NowAddress += length;
                         break;
                     case CodeTokenType.Define:
+                    case CodeTokenType.DefineLocal:
                         break;
                 }
             }
@@ -3792,9 +3828,7 @@ var Assembler;
             chunk.Address = this.NowAddress;
             const pushError = (message) => {
                 this.ErrorMessages.push({
-                    File: token.File,
-                    Line: token.Line,
-                    Source: token.Source,
+                    SourceInformation: token.SourceInformation,
                     Message: message,
                 });
             };
@@ -3818,6 +3852,7 @@ var Assembler;
             for (let i = 0; i < this.Tokens.length; i++) {
                 token = this.Tokens[i];
                 this.NowAddress = token.Address;
+                const beforeChunkLength = chunk.Data.length;
                 switch (token.TokenType) {
                     case CodeTokenType.DirectiveOrigin: {
                         if (chunk.Data.length > 0) {
@@ -3889,7 +3924,12 @@ var Assembler;
                         this.PushInstructionBinary(chunk, instruction, pushError);
                         break;
                     case CodeTokenType.Define:
+                    case CodeTokenType.DefineLocal:
                         break;
+                }
+                const addChunkLength = chunk.Data.length - beforeChunkLength;
+                for (let i = 0; i < addChunkLength; i++) {
+                    chunk.Source.push(token.SourceInformation);
                 }
             }
             if (chunk.Data.length > 0) {
@@ -4163,13 +4203,25 @@ var Assembler;
                     return [null, 'Scope resolution failed.'];
                 }
                 const label = scope.LocalScope[name];
-                if (!label) {
-                    return [null, `Failed to resolve local label "${name}".`];
+                const define = scope.LocalDefine[name];
+                if (!label && !define) {
+                    return [null, `Failed to resolve local label or define "${name}".`];
                 }
-                if (label.Address === InvalidAddress) {
-                    return [null, 'Invalid address local label.'];
+                if (label) {
+                    if (label.Address === InvalidAddress) {
+                        return [null, 'Invalid address local label.'];
+                    }
+                    return [label.Address, 'local label'];
                 }
-                return [label.Address, 'local label'];
+                else {
+                    const [value, message] = this.ResolveValue(define.Value, depth);
+                    if ((value !== null) && (value !== InvalidAddress)) {
+                        return [value, 'local define'];
+                    }
+                    else {
+                        return [null, message];
+                    }
+                }
             }
             if (this.LabelList[name]) {
                 const label = this.LabelList[name];
@@ -4315,14 +4367,14 @@ var Assembler;
             const errorStrings = [];
             for (let i = 0; i < errorMessages.length; i++) {
                 const m = errorMessages[i];
-                errorStrings.push(`[${i}] Line:${m.Line} ${m.Message}` + newline + m.Source);
+                errorStrings.push(`[${i}] Line:${m.SourceInformation.Line} ${m.Message}` + newline + m.SourceInformation.Source);
             }
             return errorStrings;
         }
         DumpTokens(print = console.log, newline = '\n') {
             for (let i = 0; i < this.Tokens.length; i++) {
                 const t = this.Tokens[i];
-                let l = `[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
+                let l = `[${i}] Line:${t.SourceInformation.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
                 if (t.Options[0] instanceof InstructionToken) {
                     l += newline + t.Options[0].ToString();
                 }
@@ -4410,13 +4462,12 @@ var Assembler;
         CodeTokenType[CodeTokenType["LabelMinus"] = 14] = "LabelMinus";
         CodeTokenType[CodeTokenType["Instruction"] = 15] = "Instruction";
         CodeTokenType[CodeTokenType["Define"] = 16] = "Define";
+        CodeTokenType[CodeTokenType["DefineLocal"] = 17] = "DefineLocal";
     })(CodeTokenType || (CodeTokenType = {}));
     class Token {
         constructor() {
             this.TokenType = CodeTokenType.Invalid;
-            this.File = '';
-            this.Line = 0;
-            this.Source = '';
+            this.SourceInformation = new SourceMapping('', 0, '');
             this.Address = 0;
             this.Options = [];
         }
@@ -4447,6 +4498,7 @@ var Assembler;
         constructor() {
             this.Address = InvalidAddress;
             this.LocalScope = {};
+            this.LocalDefine = {};
         }
     }
     class LocalScopeItem {
@@ -4459,10 +4511,19 @@ var Assembler;
             this.Value = InvalidAddress;
         }
     }
+    class SourceMapping {
+        constructor(File, Line, Source) {
+            this.File = File;
+            this.Line = Line;
+            this.Source = Source;
+        }
+    }
+    Assembler_1.SourceMapping = SourceMapping;
     class DataChunk {
         constructor() {
             this.Address = InvalidAddress;
             this.Data = [];
+            this.Source = [];
         }
     }
     Assembler_1.DataChunk = DataChunk;
@@ -4662,13 +4723,14 @@ var Application;
         }
         static UploadChunk(memory, chunk) {
             for (let i = 0; i < chunk.Data.length; i++) {
-                memory.WriteByte(chunk.Address + i, chunk.Data[i], true);
+                memory.WriteSourceByte(chunk.Address + i, chunk.Data[i], chunk.Source[i]);
             }
         }
         static UploadDefaultMemory(startAddress) {
             const resetVector = {
                 Address: 0x00FFE0,
-                Data: []
+                Data: [],
+                Source: [],
             };
             const pushWord = (chunk, value) => {
                 chunk.Data.push(Utility.Type.ToByte(value >> 0));
@@ -4925,21 +4987,24 @@ var Application;
             Main.Dom.ResultStatistics_Step.textContent = clearText;
             Main.Dom.ResultStatistics_Cycle.textContent = clearText;
             Main.Dom.ResultStatistics_Master.textContent = clearText;
-            Main.ClearResultViewer_TextLog();
-            Main.ClearResultViewer_TableLog();
-            Main.ClearResultViewer_Timeline();
-            Main.ClearResultViewer_Heatmap();
-            Main.ClearResultViewer_Written();
+            Main.ClearResultViewerFunctions.forEach((clearFunction) => {
+                try {
+                    clearFunction();
+                }
+                catch (_b) { }
+            });
         }
         static UpdateResultViewer(cpu) {
+            Main.ClearResultViewer();
             Main.Dom.ResultStatistics_Step.textContent = cpu.Logs.length.toString();
             Main.Dom.ResultStatistics_Cycle.textContent = cpu.CpuCycleCounter.toString();
             Main.Dom.ResultStatistics_Master.textContent = cpu.MasterCycleCounter.toString();
-            Main.UpdateResultViewer_TextLog(cpu);
-            Main.UpdateResultViewer_TableLog(cpu);
-            Main.UpdateResultViewer_Timeline(cpu);
-            Main.UpdateResultViewer_Heatmap(cpu);
-            Main.UpdateResultViewer_Written(cpu);
+            Main.UpdateResultViewerFunctions.forEach((updateFunction) => {
+                try {
+                    updateFunction(cpu);
+                }
+                catch (_b) { }
+            });
         }
         static ClearResultViewer_TextLog() {
             Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
@@ -4969,8 +5034,104 @@ var Application;
         static UpdateResultViewer_Heatmap(cpu) {
         }
         static ClearResultViewer_Written() {
+            const tableBody = document.querySelector('#ViewerWritten_Table tbody');
+            DomUtility.RemoveCildren(tableBody);
+            if (tableBody) {
+                const row = document.createElement('tr');
+                tableBody.appendChild(row);
+                function appendDummyChild() {
+                    const cell = document.createElement('td');
+                    cell.textContent = '---';
+                    cell.classList.add('center');
+                    row.appendChild(cell);
+                }
+                appendDummyChild();
+                appendDummyChild();
+                appendDummyChild();
+                appendDummyChild();
+                appendDummyChild();
+            }
         }
         static UpdateResultViewer_Written(cpu) {
+            var _b, _c;
+            const tableBody = document.querySelector('#ViewerWritten_Table tbody');
+            if (!tableBody) {
+                return;
+            }
+            const writeAccess = [];
+            const writeHistory = {};
+            for (let s = 0; s < cpu.Logs.length; s++) {
+                const step = cpu.Logs[s];
+                let cycle = step.MasterCycle;
+                for (let c = 0; c < step.AccessLog.length; c++) {
+                    const accessLog = step.AccessLog[c];
+                    switch (accessLog.Type) {
+                        case Emulator.AccessType.Write:
+                        case Emulator.AccessType.WriteDummy:
+                        case Emulator.AccessType.PushStack:
+                            {
+                                const history = (_b = writeHistory[accessLog.AddressBus]) !== null && _b !== void 0 ? _b : [];
+                                writeHistory[accessLog.AddressBus] = history;
+                                writeAccess.push({
+                                    Region: accessLog.Region,
+                                    Address: accessLog.AddressBus,
+                                    Value: accessLog.DataBus,
+                                    Cycle: cycle,
+                                    Type: accessLog.Type,
+                                    Repeat: history.length,
+                                });
+                                history.push(accessLog.DataBus);
+                                break;
+                            }
+                    }
+                    cycle += accessLog.Cycle;
+                }
+            }
+            if (writeAccess.length <= 0) {
+                return;
+            }
+            DomUtility.RemoveCildren(tableBody);
+            writeAccess.sort((a, b) => a.Address - b.Address);
+            function createRow(parent, className) {
+                const cell = document.createElement('td');
+                parent.appendChild(cell);
+                cell.classList.add(className);
+                return cell;
+            }
+            function addHistory(cell, content, highlight) {
+                const node = document.createElement('span');
+                node.textContent = content;
+                if (highlight) {
+                    node.classList.add('highlight');
+                }
+                cell.appendChild(node);
+            }
+            for (let i = 0; i < writeAccess.length; i++) {
+                const access = writeAccess[i];
+                const history = (_c = writeHistory[access.Address]) !== null && _c !== void 0 ? _c : [];
+                if (access.Repeat < (history.length - 1)) {
+                    continue;
+                }
+                const row = document.createElement('tr');
+                const cellRegion = createRow(row, 'region');
+                const cellAddress = createRow(row, 'address');
+                const cellValue = createRow(row, 'value');
+                const cellTiming = createRow(row, 'timing');
+                const cellHistory = createRow(row, 'history');
+                tableBody.appendChild(row);
+                cellRegion.textContent = Emulator.AccessRegion[access.Region];
+                cellAddress.textContent = `$${Utility.Format.ToHexString(access.Address, 6)}`;
+                cellValue.textContent = `$${Utility.Format.ToHexString(access.Value, 2)}`;
+                cellTiming.textContent = `${access.Cycle}`;
+                let isFirst = true;
+                for (let h = 0; h < history.length; h++) {
+                    if (!isFirst) {
+                        addHistory(cellHistory, ', ', false);
+                    }
+                    isFirst = false;
+                    addHistory(cellHistory, `$${Utility.Format.ToHexString(history[h], 2)}`, access.Repeat === h);
+                }
+            }
         }
     }
     _a = Main;
@@ -4998,6 +5159,20 @@ var Application;
         'ViewerHeatmap': Main.dummyNode,
         'ViewerWritten': Main.dummyNode,
     };
+    Main.ClearResultViewerFunctions = [
+        Main.ClearResultViewer_TextLog,
+        Main.ClearResultViewer_TableLog,
+        Main.ClearResultViewer_Timeline,
+        Main.ClearResultViewer_Heatmap,
+        Main.ClearResultViewer_Written,
+    ];
+    Main.UpdateResultViewerFunctions = [
+        Main.UpdateResultViewer_TextLog,
+        Main.UpdateResultViewer_TableLog,
+        Main.UpdateResultViewer_Timeline,
+        Main.UpdateResultViewer_Heatmap,
+        Main.UpdateResultViewer_Written,
+    ];
     Application.Main = Main;
     class Setting {
         constructor() {
@@ -5026,6 +5201,9 @@ var Application;
     }
     class DomUtility {
         static RemoveCildren(element) {
+            if (!element) {
+                return;
+            }
             for (let i = element.children.length - 1; 0 <= i; i--) {
                 element.children[i].remove();
             }
@@ -5188,4 +5366,14 @@ var Application;
         ViewerMode[ViewerMode["Heatmap"] = 3] = "Heatmap";
         ViewerMode[ViewerMode["Written"] = 4] = "Written";
     })(ViewerMode || (ViewerMode = {}));
+    class Viewer_Written_Log {
+        constructor() {
+            this.Region = Emulator.AccessRegion.MainRAM;
+            this.Address = 0;
+            this.Value = 0;
+            this.Cycle = 0;
+            this.Type = Emulator.AccessType.Write;
+            this.Repeat = 0;
+        }
+    }
 })(Application || (Application = {}));

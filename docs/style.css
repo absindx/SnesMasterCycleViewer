@@ -186,8 +186,8 @@ code.inline{
 
 :root{
 	--application-width	: 96ch;
-	--large-textbox-width	: 82ch;
-	--small-textbox-width	: 50ch;
+	--large-textbox-width	: 60%;
+	--small-textbox-width	: 40%;
 }
 
 body{
@@ -207,6 +207,11 @@ body{
 
 .hide{
 	display			: none;
+}
+
+table{
+	margin-left		: auto;
+	margin-right		: auto;
 }
 
 textarea{
@@ -242,6 +247,16 @@ fieldset dl{
 
 #Assembler article{
 	margin			: auto;
+	max-width		: var(--application-width);
+}
+#AssemblerMain{
+	width			: 60%;
+}
+#AssemblerHexfile{
+	width			: 40%;
+}
+#Assembler textarea{
+	width			: calc(100% - 6px);
 }
 #AssemblerContainer, #AssemblerController{
 	margin			: 4px 0px;
@@ -251,12 +266,10 @@ fieldset dl{
 }
 #AssemblerMain textarea{
 	resize			: vertical;
-	width			: var(--large-textbox-width);
 	min-height		: 8em;
 }
 #AssemblerHexfile textarea{
 	resize			: none;
-	width			: var(--small-textbox-width);
 }
 #AssemblerMain, #AssemblerHexfile{
 	margin			: 0px 2px;
@@ -322,6 +335,45 @@ fieldset dl{
 	overflow		: scroll;
 }
 
+#ViewerWritten_Table{
+	width			: var(--application-width);
+}
+#ViewerWritten th.region{
+	width			: 12ch;
+}
+#ViewerWritten th.address{
+	width			: 10ch;
+}
+#ViewerWritten th.value{
+	width			: 6ch;
+}
+#ViewerWritten th.timing{
+	width			: 12ch;
+}
+#ViewerWritten th.history{
+	width			: calc(var(--application-width) - 40ch);
+}
+
+#ViewerWritten td.region{
+	text-align		: center;
+}
+#ViewerWritten td.address{
+	text-align		: center;
+}
+#ViewerWritten td.value{
+	text-align		: center;
+}
+#ViewerWritten td.timing{
+	text-align		: right;
+}
+#ViewerWritten td.history{
+	color			: silver;
+}
+#ViewerWritten td.history .highlight{
+	color			: #000000;
+	text-decoration		: underline;
+}
+
 footer ul{
 	text-align		: center;
 }
@@ -334,16 +386,23 @@ footer ul li:first-of-type{
 	border-left		: none;
 }
 
-@media (max-width: 82ch){
+@media (max-width: 100ch){
 	#AssemblerContainer{
 		display		: block;
 	}
+	#AssemblerContainer div{
+		width		: 100%;
+		margin-left	: 0;
+		margin-right	: 0;
+	}
+	#AssemblerContainer textarea{
+		width		: calc(100% - 20px);
+	}
 	#AssemblerHexfile textarea{
-		width			: var(--large-textbox-width);
-		height			: 8em;
+		height		: 8em;
 	}
 	#AssemblerHexfile div{
-		display			: block;
+		display		: block;
 	}
 }
 
