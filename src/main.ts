@@ -347,6 +347,7 @@ namespace Emulator{
 
 			const opcode		= this.FetchProgramByte(AccessType.FetchOpcode);
 			log.Instruction		= opcode[0].Data;
+			log.Source		= opcode[0].Source;
 			log.AccessLog.push(opcode[1]);
 			this.CpuCycleCounter++;
 			yield;
@@ -1203,7 +1204,6 @@ namespace Emulator{
 				yield* instructionFunction[1];
 			}
 														// 22a: S (ABORT, IRQ, NMI, RES)
-														// TODO: Implements
 			function *AddressingStackPull(lengthFlag: boolean){					// 22b: S (PLA, PLB, PLD, PLP, PLX, PLY)
 				calculateInstructionLength();
 
@@ -2779,7 +2779,8 @@ namespace Emulator{
 	};
 
 	export class Memory{
-		private AddressSpace: {[Address: number]: number}	= {};
+		private AddressSpace: {[Address: number]: number}			= {};
+		private SourceSpace: {[Address: number]: Assembler.SourceMapping}	= {};
 		ROMMapping: RomMapping	= RomMapping.LoROM;
 		IsFastROM: boolean	= false;
 
@@ -2811,10 +2812,12 @@ namespace Emulator{
 			data	= Utility.Type.ToByte(data);
 
 			const speed		= this.UpdateBus(address, data);
+			const source		= this.SourceSpace[realAddress] ?? null;
 			const result: MemoryReadResult	= {
 				Region: region,
 				Data: data,
 				Speed: speed,
+				Source: source,
 			};
 			return result;
 		}
@@ -2834,6 +2837,16 @@ namespace Emulator{
 				Speed: speed,
 			};
 			return result;
+		}
+		public WriteSourceByte(address: number, data: number, source: Assembler.SourceMapping | null){
+			const [region, realAddress]	= this.ToRealAddress(address);
+			const enableRegion		= (region !== AccessRegion.OpenBus) && (region !== AccessRegion.IO);
+			if(enableRegion){
+				this.AddressSpace[realAddress]	= Utility.Type.ToByte(data);
+				if(source){
+					this.SourceSpace[realAddress]	= source;
+				}
+			}
 		}
 
 		private ToRealAddress(address: number): [AccessRegion, number]{
@@ -2928,71 +2941,63 @@ namespace Emulator{
 			switch(address){
 				case 0x00210D:	// BG1HOFS
 					// ---XXXXX XXXXXXXX
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.BG1HOFS	= this.Mode7Latch & 0x1FFF;
+					this.PpuRegister.BG1HOFS	= this.UpdateMode7Latch(data) & 0x1FFF;
 					return true;
 				case 0x00210E:	// BG1VOFS
 					// ---YYYYY YYYYYYYY
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.BG1VOFS	= this.Mode7Latch & 0x1FFF;
+					this.PpuRegister.BG1VOFS	= this.UpdateMode7Latch(data) & 0x1FFF;
 					return true;
 				case 0x00211B:	// M7A
 					// DDDDDDDD dddddddd
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7A		= this.Mode7Latch;
+					this.PpuRegister.M7A		= this.UpdateMode7Latch(data);
 					this.PpuRegister.StartMultiplication();
 					return true;
 				case 0x00211C:	// M7B
 					// DDDDDDDD dddddddd
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7B		= this.Mode7Latch;
+					this.PpuRegister.M7B		= this.UpdateMode7Latch(data);
 					this.PpuRegister.StartMultiplication();
 					return true;
 				case 0x00211D:	// M7C
 					// DDDDDDDD dddddddd
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7C		= this.Mode7Latch;
+					this.PpuRegister.M7C		= this.UpdateMode7Latch(data);
 					return true;
 				case 0x00210E:	// M7D
 					// DDDDDDDD dddddddd
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7D		= this.Mode7Latch;
+					this.PpuRegister.M7D		= this.UpdateMode7Latch(data);
 					return true;
 				case 0x00211F:	// M7X
 					// ---XXXXX XXXXXXXX
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7X		= this.Mode7Latch & 0x1FFF;
+					this.PpuRegister.M7X		= this.UpdateMode7Latch(data) & 0x1FFF;
 					return true;
 				case 0x002120:	// M7Y
 					// ---YYYYY YYYYYYYY
-					this.UpdateMode7Latch(data);
-					this.PpuRegister.M7Y		= this.Mode7Latch & 0x1FFF;
+					this.PpuRegister.M7Y		= this.UpdateMode7Latch(data) & 0x1FFF;
 					return true;
 				case 0x004202:	// WRMPYA
 					// DDDDDDDD
-					this.CpuRegister.WRMPYA	= data;
+					this.CpuRegister.WRMPYA		= data;
 					return true;
 				case 0x004203:	// WRMPYB
 					// DDDDDDDD
-					this.CpuRegister.WRMPYB	= data;
+					this.CpuRegister.WRMPYB		= data;
 					this.CpuRegister.StartMultiplication();
 					return true;
 				case 0x004204:	// WRDIVL
 					// LLLLLLLL
-					this.CpuRegister.WRDIVL	= data;
+					this.CpuRegister.WRDIVL		= data;
 					return true;
 				case 0x004205:	// WRDIVH
 					// HHHHHHHH
-					this.CpuRegister.WRDIVH	= data;
+					this.CpuRegister.WRDIVH		= data;
 					return true;
 				case 0x004206:	// WRDIVB
 					// DDDDDDDD
-					this.CpuRegister.WRDIVB	= data;
+					this.CpuRegister.WRDIVB		= data;
 					this.CpuRegister.StartMultiplication();
 					return true;
 				case 0x00420D:	// MEMSEL
 					// -------F
-					this.IsFastROM		= (data & 1) !== 0;
+					this.IsFastROM			= (data & 1) !== 0;
 					return true;
 			}
 			if((address & 0xFFFF80) == 0x004300){
@@ -3055,9 +3060,10 @@ namespace Emulator{
 			return speed;
 		}
 
-		private UpdateMode7Latch(value: number){
+		private UpdateMode7Latch(value: number): number{
 			value		= Utility.Type.ToByte(value);
 			this.Mode7Latch	= Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
+			return this.Mode7Latch;
 		}
 
 		public ClockIO(){
@@ -3454,21 +3460,21 @@ namespace Emulator{
 	}
 
 	export class StepLog{
-		Instruction: Instruction	= Instruction.NOP;	// Initial: NOP ($EA)
-		Addressing: Addressing		= Addressing.Implied;
-		Opcode: number | null		= InstructionTable[Emulator.Instruction[this.Instruction]][this.Addressing];
-		Operand1: number		= 0;
-		Operand2: number		= 0;
-		InstructionAddress: number	= 0;
-		IndirectAddress: number		= 0;
-		EffectiveAddress: number	= 0;
-		EffectiveValue: number		= 0;
-		MasterCycle: number		= 0;
-		CpuCycle: number		= 0;
-		InstructionLength: number	= 0;
-		SourceLineNumber: number	= -1;
-		Registers: Registers		= new Registers();
-		AccessLog: AccessLog[]		= [];
+		Instruction: Instruction		= Instruction.NOP;	// Initial: NOP ($EA)
+		Addressing: Addressing			= Addressing.Implied;
+		Opcode: number | null			= InstructionTable[Emulator.Instruction[this.Instruction]][this.Addressing];
+		Operand1: number			= 0;
+		Operand2: number			= 0;
+		InstructionAddress: number		= 0;
+		IndirectAddress: number			= 0;
+		EffectiveAddress: number		= 0;
+		EffectiveValue: number			= 0;
+		MasterCycle: number			= 0;
+		CpuCycle: number			= 0;
+		InstructionLength: number		= 0;
+		Registers: Registers			= new Registers();
+		AccessLog: AccessLog[]			= [];
+		Source: Assembler.SourceMapping | null	= null;
 
 		public GetLogString(): string{
 			return `${Instruction[this.Instruction]} `
@@ -3582,6 +3588,7 @@ namespace Emulator{
 		Region: AccessRegion;
 		Data: number;	// byte
 		Speed: AccessSpeed;
+		Source: Assembler.SourceMapping | null;
 	}
 	type MemoryWriteResult = {
 		Region: AccessRegion;
@@ -3717,18 +3724,14 @@ namespace Assembler{
 			const pushToken	= (tokenType: CodeTokenType, options: (string | number | TokenOption | null)[]) => {
 				this.Tokens.push({
 					TokenType: tokenType,
-					File: file,
-					Line: lineNumber + 1,
-					Source: lines[lineNumber],
+					SourceInformation: new SourceMapping(file, lineNumber + 1, lines[lineNumber]),
 					Address: 0,
 					Options: options,
 				});
 			}
 			const pushError	= (message: string) => {
 				this.ErrorMessages.push({
-					File: file,
-					Line: lineNumber + 1,
-					Source: lines[lineNumber],
+					SourceInformation: new SourceMapping(file, lineNumber + 1, lines[lineNumber]),
 					Message: message,
 				});
 			}
@@ -4038,9 +4041,7 @@ namespace Assembler{
 
 			const pushError		= (message: string) => {
 				this.ErrorMessages.push({
-					File: token.File,
-					Line: token.Line,
-					Source: token.Source,
+					SourceInformation: token.SourceInformation,
 					Message: message,
 				});
 			}
@@ -4324,9 +4325,7 @@ namespace Assembler{
 
 			const pushError		= (message: string) => {
 				this.ErrorMessages.push({
-					File: token.File,
-					Line: token.Line,
-					Source: token.Source,
+					SourceInformation: token.SourceInformation,
 					Message: message,
 				});
 			}
@@ -4351,6 +4350,7 @@ namespace Assembler{
 			for(let i = 0; i < this.Tokens.length; i++){
 				token		= this.Tokens[i];
 				this.NowAddress	= token.Address;
+				const beforeChunkLength	= chunk.Data.length;
 
 				switch(token.TokenType){
 					case CodeTokenType.DirectiveOrigin: {		// ".org"
@@ -4430,6 +4430,11 @@ namespace Assembler{
 					case CodeTokenType.DefineLocal:			// ".Xxx=YY"
 						// NOP
 						break;
+				}
+
+				const addChunkLength	= chunk.Data.length - beforeChunkLength;
+				for(let i = 0; i < addChunkLength; i++){
+					chunk.Source.push(token.SourceInformation);
 				}
 			}
 
@@ -4989,7 +4994,7 @@ namespace Assembler{
 
 			for(let i = 0; i < errorMessages.length; i++){
 				const m	= errorMessages[i];
-				errorStrings.push(`[${i}] Line:${m.Line} ${m.Message}` + newline + m.Source);
+				errorStrings.push(`[${i}] Line:${m.SourceInformation.Line} ${m.Message}` + newline + m.SourceInformation.Source);
 			}
 
 			return errorStrings;
@@ -4999,7 +5004,7 @@ namespace Assembler{
 			// for debug
 			for(let i = 0; i < this.Tokens.length; i++){
 				const t	= this.Tokens[i];
-				let l	= `[${i}] Line:${t.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
+				let l	= `[${i}] Line:${t.SourceInformation.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
 
 				if(t.Options[0] instanceof InstructionToken){
 					l	+= newline + t.Options[0].ToString();
@@ -5033,9 +5038,7 @@ namespace Assembler{
 	}
 
 	export type ErrorMessage = {
-		File: string;
-		Line: number;
-		Source: string;
+		SourceInformation: SourceMapping,
 		Message: string;
 	}
 
@@ -5060,11 +5063,9 @@ namespace Assembler{
 		DefineLocal,		// ".Xxx=YY"
 	}
 	class Token{
-		TokenType: CodeTokenType	= CodeTokenType.Invalid;
-		File: string	= '';
-		Line: number	= 0;
-		Source: string	= ''
-		Address: number	= 0;
+		TokenType: CodeTokenType				= CodeTokenType.Invalid;
+		SourceInformation: SourceMapping			= new SourceMapping('', 0, '');
+		Address: number						= 0;
 		Options: (string | number | TokenOption | null)[]	= [];
 	}
 	interface TokenOption{}
@@ -5105,9 +5106,18 @@ namespace Assembler{
 		Value: number | string	= InvalidAddress;
 	}
 
+	export class SourceMapping{
+		constructor(
+			public File: string,
+			public Line: number,
+			public Source: string,
+		){}
+	}
+
 	export class DataChunk{
-		Address: number	= InvalidAddress;
-		Data: number[]	= [];
+		Address: number		= InvalidAddress;
+		Data: number[]		= [];
+		Source: SourceMapping[]	= [];
 	}
 
 	class InstructionPattern{
@@ -5377,13 +5387,14 @@ namespace Application{
 
 		private static UploadChunk(memory: Emulator.Memory, chunk: Assembler.DataChunk){
 			for(let i = 0; i < chunk.Data.length; i++){
-				memory.WriteByte(chunk.Address + i, chunk.Data[i], true);
+				memory.WriteSourceByte(chunk.Address + i, chunk.Data[i], chunk.Source[i]);
 			}
 		}
 		private static UploadDefaultMemory(startAddress: number){
 			const resetVector: Assembler.DataChunk	= {
 				Address: 0x00FFE0,
-				Data: []
+				Data: [],
+				Source: [],
 			}
 			const pushWord	= (chunk: Assembler.DataChunk, value: number) => {
 				chunk.Data.push(Utility.Type.ToByte(value >>  0));
