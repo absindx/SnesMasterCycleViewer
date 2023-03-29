@@ -306,11 +306,12 @@ var Emulator;
                 const diffPC = endPC - startPC;
                 log.InstructionLength = diffPC;
             }
-            function pushDummyAccess(accessType, readAccess = true, writeAccess = false) {
+            function pushDummyAccess(accessType, readAccess = true, writeAccess = false, offset = 0) {
+                const address = (cpu.Memory.AddressBus & 0xFF0000) + Utility.Type.ToWord((cpu.Memory.AddressBus & 0x00FFFF) + offset);
                 if (readAccess) {
-                    const dummyAccess = cpu.ReadDataByte(accessType, cpu.Memory.AddressBus);
+                    const dummyAccess = cpu.ReadDataByte(accessType, address);
                     log.AccessLog.push({
-                        AddressBus: cpu.Memory.AddressBus,
+                        AddressBus: address,
                         DataBus: cpu.Memory.DataBus,
                         Region: dummyAccess[1].Region,
                         Type: accessType,
@@ -318,9 +319,9 @@ var Emulator;
                     });
                 }
                 if (writeAccess) {
-                    const dummyAccess = cpu.WriteDataByte(accessType, cpu.Memory.AddressBus, cpu.Memory.DataBus);
+                    const dummyAccess = cpu.WriteDataByte(accessType, address, cpu.Memory.DataBus);
                     log.AccessLog.push({
-                        AddressBus: cpu.Memory.AddressBus,
+                        AddressBus: address,
                         DataBus: cpu.Memory.DataBus,
                         Region: dummyAccess[1].Region,
                         Type: accessType,
@@ -651,7 +652,7 @@ var Emulator;
             }
             function* AddressingAccumulator() {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 log.Addressing = Addressing.Accumulator;
                 yield* instructionFunction[1];
             }
@@ -973,7 +974,7 @@ var Emulator;
             }
             function* AddressingImplied(additionalWait = false) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 if (additionalWait) {
                     yield;
                     pushDummyAccess(AccessType.ReadDummy);
@@ -1009,7 +1010,7 @@ var Emulator;
             }
             function* AddressingStackPull(lengthFlag) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
@@ -1028,7 +1029,7 @@ var Emulator;
             }
             function* AddressingStackPush(value, lengthFlag) {
                 const stackPointer = cpu.Registers.S;
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 if (!lengthFlag) {
                     pushPushStack(value >> 8);
@@ -1042,7 +1043,7 @@ var Emulator;
             }
             function* AddressingStackReturnInterrupt() {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
@@ -1064,7 +1065,7 @@ var Emulator;
             }
             function* AddressingStackReturn(lengthFlag) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
@@ -1229,7 +1230,7 @@ var Emulator;
                     const readValueLow = cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 0);
                     log.AccessLog.push(readValueLow[1]);
                     readValue = readValueLow[0].Data;
-                    if (!cpu.Registers.GetStatusFlagM()) {
+                    if (!lengthFlag) {
                         yield;
                         const readValueHigh = cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
                         log.AccessLog.push(readValueHigh[1]);

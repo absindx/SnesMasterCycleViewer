@@ -359,12 +359,13 @@ namespace Emulator{
 				const diffPC	= endPC - startPC;
 				log.InstructionLength	= diffPC;
 			}
-			function pushDummyAccess(accessType: AccessType, readAccess: boolean = true, writeAccess: boolean = false){
+			function pushDummyAccess(accessType: AccessType, readAccess: boolean = true, writeAccess: boolean = false, offset:number = 0){
 				// VDA = 0, VPA = 0
+				const address	= (cpu.Memory.AddressBus & 0xFF0000) + Utility.Type.ToWord((cpu.Memory.AddressBus & 0x00FFFF) + offset);
 				if(readAccess){
-					const dummyAccess	= cpu.ReadDataByte(accessType, cpu.Memory.AddressBus);
+					const dummyAccess	= cpu.ReadDataByte(accessType, address);
 					log.AccessLog.push({
-						AddressBus: cpu.Memory.AddressBus,
+						AddressBus: address,
 						DataBus: cpu.Memory.DataBus,
 						Region: dummyAccess[1].Region,
 						Type: accessType,
@@ -372,9 +373,9 @@ namespace Emulator{
 					});
 				}
 				if(writeAccess){
-					const dummyAccess	= cpu.WriteDataByte(accessType, cpu.Memory.AddressBus, cpu.Memory.DataBus);
+					const dummyAccess	= cpu.WriteDataByte(accessType, address, cpu.Memory.DataBus);
 					log.AccessLog.push({
-						AddressBus: cpu.Memory.AddressBus,
+						AddressBus: address,
 						DataBus: cpu.Memory.DataBus,
 						Region: dummyAccess[1].Region,
 						Type: accessType,
@@ -776,7 +777,7 @@ namespace Emulator{
 			function *AddressingAccumulator(){							// 08: A
 				calculateInstructionLength();
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 
 				log.Addressing			= Addressing.Accumulator;
 
@@ -1163,11 +1164,11 @@ namespace Emulator{
 			function *AddressingImplied(additionalWait: boolean = false){				// 19: Impl
 				calculateInstructionLength();
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 
 				if(additionalWait){
 					yield;
-					pushDummyAccess(AccessType.ReadDummy);
+					pushDummyAccess(AccessType.ReadDummy);		// read next pc (incremented)
 				}
 
 				log.Addressing			= Addressing.Implied;
@@ -1211,10 +1212,10 @@ namespace Emulator{
 			function *AddressingStackPull(lengthFlag: boolean){					// 22b: S (PLA, PLB, PLD, PLP, PLX, PLY)
 				calculateInstructionLength();
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 				yield;
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy);			// read next pc (incremented)
 				yield;
 
 				const stackPointer		= cpu.Registers.S;
@@ -1235,7 +1236,7 @@ namespace Emulator{
 			function *AddressingStackPush(value: number, lengthFlag: boolean){			// 22c: S (PHA, PHB, PHP, PHD, PHK, PHX, PHY)
 				const stackPointer		= cpu.Registers.S;
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 				yield;
 
 				if(!lengthFlag){
@@ -1257,10 +1258,10 @@ namespace Emulator{
 			function *AddressingStackReturnInterrupt(){						// 22g: S (RTI)
 				calculateInstructionLength();
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 				yield;
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy);			// read next pc (incremented)
 				yield;
 
 				const stackStatus		= pushPullStack();
@@ -1286,10 +1287,10 @@ namespace Emulator{
 			function *AddressingStackReturn(lengthFlag: boolean){					// 22h, 22i: S (RTS, RTL)
 				calculateInstructionLength();
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy, true, false, 1);	// read next pc
 				yield;
 
-				pushDummyAccess(AccessType.ReadDummy);
+				pushDummyAccess(AccessType.ReadDummy);			// read next pc (incremented)
 				yield;
 
 				const stackPCLow		= pushPullStack();
@@ -1500,7 +1501,7 @@ namespace Emulator{
 					log.AccessLog.push(readValueLow[1]);
 					readValue			= readValueLow[0].Data;
 
-					if(!cpu.Registers.GetStatusFlagM()){
+					if(!lengthFlag){
 						yield;
 						const readValueHigh	= cpu.ReadDataByte(AccessType.Read, log.EffectiveAddress + 1);
 						log.AccessLog.push(readValueHigh[1]);

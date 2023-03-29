@@ -67,10 +67,10 @@
        <table id="AssemblerDirective" class="CodeMixedBlock">
         <tr><th>Name</th				><th>Syntax</th							><th>Example</th							></tr>
         <tr><td>Origin</td				><td class="Syntax">.org address</td				><td class="Example">.org $008000</td					></tr>
-        <tr><td>Byte array</td				><td class="Syntax">.db value, value, value, ...</td		><td class="Example">.db $00, 1, "2", Label</td				></tr>
-        <tr><td>Word array</td				><td class="Syntax">.dw value, value, value, ...</td		><td class="Example">.dw $00, 1, "2", Label</td				></tr>
-        <tr><td>Long array</td				><td class="Syntax">.dl value, value, value, ...</td		><td class="Example">.dl $00, 1, "2", Label</td				></tr>
-        <tr><td>Dword array</td				><td class="Syntax">.dd value, value, value, ...</td		><td class="Example">.dd $00, 1, "2", Label</td				></tr>
+        <tr><td>Byte array</td				><td class="Syntax">.db value, value, value, ...</td		><td class="Example">.db $00, 1, "ABC", Label</td			></tr>
+        <tr><td>Word array</td				><td class="Syntax">.dw value, value, value, ...</td		><td class="Example">.dw $00, 1, "ABC", Label</td			></tr>
+        <tr><td>Long array</td				><td class="Syntax">.dl value, value, value, ...</td		><td class="Example">.dl $00, 1, "ABC", Label</td			></tr>
+        <tr><td>Dword array</td				><td class="Syntax">.dd value, value, value, ...</td		><td class="Example">.dd $00, 1, "ABC", Label</td			></tr>
         <tr><td>Memory short</td			><td class="Syntax">.m8</td					><td class="Example">.m8<br		>LDA #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A9 00</span></td	></tr>
         <tr><td>Memory long</td				><td class="Syntax">.m16</td					><td class="Example">.m16<br		>LDA #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A9 00 00</span></td	></tr>
         <tr><td>Index short</td				><td class="Syntax">.i8</td					><td class="Example">.i8<br		>LDX #0&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">; A2 00</span></td	></tr>
@@ -145,6 +145,10 @@
         <tr><td class="Register">RDMPYH</td		><td class="Address">$4217</td		><td class="Access">Read</td	></tr>
 -->
        </table>
+     </article>
+     <article>
+      <h3>Note</h3>
+      <p>Does not emulate DRAM refresh to account for worst case cycle calculations.</p>
      </article>
    </section>
    <section>
