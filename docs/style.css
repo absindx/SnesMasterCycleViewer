@@ -354,10 +354,10 @@ fieldset dl{
 	width			: 6ch;
 }
 #ViewerWritten th.timing{
-	width			: 12ch;
+	width			: 10ch;
 }
 #ViewerWritten th.history{
-	width			: calc(var(--application-width) - 40ch);
+	width			: calc(var(--application-width) - 38ch);
 }
 
 #ViewerWritten td.region{

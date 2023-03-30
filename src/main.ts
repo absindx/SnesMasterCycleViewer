@@ -267,10 +267,16 @@ namespace Emulator{
 			const execute	= this.yieldFunction.next();
 			if(execute.done){
 				this.yieldFunction	= null;
-				this.Memory.CpuStepIO();
 			}
 
-			this.Memory.ClockIO();
+			// Get last master cycle
+			const lastLog	= this.Logs[this.Logs.length - 1];
+			const lastAccess= lastLog.AccessLog[lastLog.AccessLog.length - 1];
+			const lastCycle	= lastAccess.Cycle;
+
+			this.Memory.ClockIO(lastCycle);
+
+			this.MasterCycleCounter	+= lastCycle;
 		}
 		public Step(){
 			do{
@@ -2431,8 +2437,6 @@ namespace Emulator{
 				}
 				yield;
 			}while(!execute.done)
-
-			this.MasterCycleCounter	+= log.GetExecuteMasterCycle();
 		}
 
 		private JumpInterruptHandler(interrupt: InterruptType){
@@ -2927,6 +2931,10 @@ namespace Emulator{
 					return [this.PpuRegister.MPYM, 0xFF];
 				case 0x002136:	// MPYH
 					return [this.PpuRegister.MPYH, 0xFF];
+				case 0x004214:	// RDDIVL
+					return [this.CpuRegister.RDDIVL, 0xFF];
+				case 0x004215:	// RDDIVH
+					return [this.CpuRegister.RDDIVH, 0xFF];
 				case 0x004216:	// RDMPYL
 					return [this.CpuRegister.RDMPYL, 0xFF];
 				case 0x004217:	// RDMPYH
@@ -2987,8 +2995,8 @@ namespace Emulator{
 					return true;
 				case 0x004203:	// WRMPYB
 					// DDDDDDDD
-					this.CpuRegister.WRMPYB		= data;
-					this.CpuRegister.StartMultiplication();
+					//this.CpuRegister.WRMPYB	= data;
+					this.CpuRegister.StartMultiplication(data);
 					return true;
 				case 0x004204:	// WRDIVL
 					// LLLLLLLL
@@ -3000,8 +3008,8 @@ namespace Emulator{
 					return true;
 				case 0x004206:	// WRDIVB
 					// DDDDDDDD
-					this.CpuRegister.WRDIVB		= data;
-					this.CpuRegister.StartMultiplication();
+					//this.CpuRegister.WRDIVB	= data;
+					this.CpuRegister.StartDivision(data);
 					return true;
 				case 0x00420D:	// MEMSEL
 					// -------F
@@ -3074,10 +3082,8 @@ namespace Emulator{
 			return this.Mode7Latch;
 		}
 
-		public ClockIO(){
+		public ClockIO(cycle: AccessSpeed){
 			this.PpuRegister.Step();
-		}
-		public CpuStepIO(){
 			this.CpuRegister.Step();
 		}
 	}
@@ -3085,11 +3091,11 @@ namespace Emulator{
 	export class CpuRegister{
 		NMITIMEN: number	= 0; // $4200
 		WRIO: number		= 0; // $4201
-		WRMPYA: number		= 0; // $4202
-		WRMPYB: number		= 0; // $4203
-		WRDIVL: number		= 0; // $4204
+		WRMPYA: number		= 0; // $4202 8bit
+		WRMPYB: number		= 0; // $4203   * 8bit = unsigned 16bit
+		WRDIVL: number		= 0; // $4204 unsigned 16bit
 		WRDIVH: number		= 0; // $4205
-		WRDIVB: number		= 0; // $4206
+		WRDIVB: number		= 0; // $4206 unsigned 8bit
 		HTIMEL: number		= 0; // $4207
 		HTIMEH: number		= 0; // $4208
 		VTIMEL: number		= 0; // $4209
@@ -3101,9 +3107,9 @@ namespace Emulator{
 		TIMEUP: number		= 0; // $4211
 		HVBJOY: number		= 0; // $4212
 		RDIO: number		= 0; // $4213
-		RDDIVL: number		= 0; // $4214
+		RDDIVL: number		= 0; // $4214 unsigned 16bit result
 		RDDIVH: number		= 0; // $4215
-		RDMPYL: number		= 0; // $4216
+		RDMPYL: number		= 0; // $4216 unsigned 16bit multiplication result / division remainder
 		RDMPYH: number		= 0; // $4217
 		JOY1L: number		= 0; // $4218
 		JOY1H: number		= 0; // $4219
@@ -3114,18 +3120,82 @@ namespace Emulator{
 		JOY4L: number		= 0; // $421E
 		JOY4H: number		= 0; // $421F
 
+		private shiftMulDiv: number		= 0;
+
 		private stepMultiplication: number	= 0;
 		private stepDivision: number		= 0;
 
-		public StartMultiplication(){
-			this.stepMultiplication		= 8;
+		public StartMultiplication(wrmpyb: number){
+			this.SetRdMpy(0);
+
+			if((this.stepMultiplication > 0) || (this.stepDivision > 0)){
+				return;
+			}
+
+			this.WRMPYB			= wrmpyb;
+			this.RDDIVH			= this.WRMPYB;
+			this.RDDIVL			= this.WRMPYA;
+
+			this.shiftMulDiv		= this.WRMPYB;
+			this.stepMultiplication		= 8 + 1;
 		}
-		public StartDivision(){
-			this.stepDivision		= 16;
+		public StartDivision(wrdivb: number){
+			this.RDMPYH			= this.WRDIVH;
+			this.RDMPYL			= this.WRDIVL;
+
+			if((this.stepMultiplication > 0) || (this.stepDivision > 0)){
+				return;
+			}
+
+			this.WRDIVB			= wrdivb;
+
+			this.shiftMulDiv		= this.WRDIVB << 16;
+			this.stepDivision		= 16 + 1;
 		}
 
 		public Step(){
-			// TODO: Implements
+			if(this.stepMultiplication > 0){
+				if(this.stepMultiplication <= 8){
+					if((this.GetRdDiv() & 1) === 1){
+						this.SetRdMpy(this.GetRdMpy() + this.shiftMulDiv);
+					}
+
+					this.SetRdDiv(this.GetRdDiv() >> 1);
+					this.shiftMulDiv	<<= 1;
+				}
+
+				this.stepMultiplication--;
+			}
+
+			if(this.stepDivision > 0){
+				if(this.stepDivision <= 16){
+					this.shiftMulDiv	>>= 1;
+					const sub		= this.GetRdMpy() - this.shiftMulDiv;
+					let carry		= 0;
+					if(sub >= 0){
+						this.SetRdMpy(sub);
+						carry	= 1;
+					}
+					this.SetRdDiv((this.GetRdDiv() << 1) | carry);
+				}
+
+				this.stepDivision--;
+			}
+		}
+
+		private GetRdMpy(): number{
+			return Utility.Type.ToWord((this.RDMPYH << 8) | this.RDMPYL);
+		}
+		private GetRdDiv(): number{
+			return Utility.Type.ToWord((this.RDDIVH << 8) | this.RDDIVL);
+		}
+		private SetRdMpy(value: number){
+			this.RDMPYH	= Utility.Type.ToByte(value >> 8);
+			this.RDMPYL	= Utility.Type.ToByte(value);
+		}
+		private SetRdDiv(value: number){
+			this.RDDIVH	= Utility.Type.ToByte(value >> 8);
+			this.RDDIVL	= Utility.Type.ToByte(value);
 		}
 	}
 	export class PpuRegister{

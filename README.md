@@ -17,7 +17,7 @@ This is **not** intended to emulate SNES perfectly.
 	* Pass test programs
 	* Emulates direct page addressing wrapping in emulation mode
 * I/O emulation
-	* 5A22 Mul/Div
-	* WRAM data
+	* 5A22 Mul/Div test
+	* WRAM data access
 	* ...
 * Manual

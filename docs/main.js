@@ -233,9 +233,12 @@ var Emulator;
             const execute = this.yieldFunction.next();
             if (execute.done) {
                 this.yieldFunction = null;
-                this.Memory.CpuStepIO();
             }
-            this.Memory.ClockIO();
+            const lastLog = this.Logs[this.Logs.length - 1];
+            const lastAccess = lastLog.AccessLog[lastLog.AccessLog.length - 1];
+            const lastCycle = lastAccess.Cycle;
+            this.Memory.ClockIO(lastCycle);
+            this.MasterCycleCounter += lastCycle;
         }
         Step() {
             do {
@@ -2051,7 +2054,6 @@ var Emulator;
                 }
                 yield;
             } while (!execute.done);
-            this.MasterCycleCounter += log.GetExecuteMasterCycle();
         }
         JumpInterruptHandler(interrupt) {
             const readAddress = interrupt;
@@ -2507,6 +2509,10 @@ var Emulator;
                     return [this.PpuRegister.MPYM, 0xFF];
                 case 0x002136:
                     return [this.PpuRegister.MPYH, 0xFF];
+                case 0x004214:
+                    return [this.CpuRegister.RDDIVL, 0xFF];
+                case 0x004215:
+                    return [this.CpuRegister.RDDIVH, 0xFF];
                 case 0x004216:
                     return [this.CpuRegister.RDMPYL, 0xFF];
                 case 0x004217:
@@ -2554,8 +2560,7 @@ var Emulator;
                     this.CpuRegister.WRMPYA = data;
                     return true;
                 case 0x004203:
-                    this.CpuRegister.WRMPYB = data;
-                    this.CpuRegister.StartMultiplication();
+                    this.CpuRegister.StartMultiplication(data);
                     return true;
                 case 0x004204:
                     this.CpuRegister.WRDIVL = data;
@@ -2564,8 +2569,7 @@ var Emulator;
                     this.CpuRegister.WRDIVH = data;
                     return true;
                 case 0x004206:
-                    this.CpuRegister.WRDIVB = data;
-                    this.CpuRegister.StartMultiplication();
+                    this.CpuRegister.StartDivision(data);
                     return true;
                 case 0x00420D:
                     this.IsFastROM = (data & 1) !== 0;
@@ -2658,10 +2662,8 @@ var Emulator;
             this.Mode7Latch = Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
             return this.Mode7Latch;
         }
-        ClockIO() {
+        ClockIO(cycle) {
             this.PpuRegister.Step();
-        }
-        CpuStepIO() {
             this.CpuRegister.Step();
         }
     }
@@ -2698,16 +2700,69 @@ var Emulator;
             this.JOY3H = 0;
             this.JOY4L = 0;
             this.JOY4H = 0;
+            this.shiftMulDiv = 0;
             this.stepMultiplication = 0;
             this.stepDivision = 0;
         }
-        StartMultiplication() {
-            this.stepMultiplication = 8;
+        StartMultiplication(wrmpyb) {
+            this.SetRdMpy(0);
+            if ((this.stepMultiplication > 0) || (this.stepDivision > 0)) {
+                return;
+            }
+            this.WRMPYB = wrmpyb;
+            this.RDDIVH = this.WRMPYB;
+            this.RDDIVL = this.WRMPYA;
+            this.shiftMulDiv = this.WRMPYB;
+            this.stepMultiplication = 8 + 1;
         }
-        StartDivision() {
-            this.stepDivision = 16;
+        StartDivision(wrdivb) {
+            this.RDMPYH = this.WRDIVH;
+            this.RDMPYL = this.WRDIVL;
+            if ((this.stepMultiplication > 0) || (this.stepDivision > 0)) {
+                return;
+            }
+            this.WRDIVB = wrdivb;
+            this.shiftMulDiv = this.WRDIVB << 16;
+            this.stepDivision = 16 + 1;
         }
         Step() {
+            if (this.stepMultiplication > 0) {
+                if (this.stepMultiplication <= 8) {
+                    if ((this.GetRdDiv() & 1) === 1) {
+                        this.SetRdMpy(this.GetRdMpy() + this.shiftMulDiv);
+                    }
+                    this.SetRdDiv(this.GetRdDiv() >> 1);
+                    this.shiftMulDiv <<= 1;
+                }
+                this.stepMultiplication--;
+            }
+            if (this.stepDivision > 0) {
+                if (this.stepDivision <= 16) {
+                    this.shiftMulDiv >>= 1;
+                    const sub = this.GetRdMpy() - this.shiftMulDiv;
+                    let carry = 0;
+                    if (sub >= 0) {
+                        this.SetRdMpy(sub);
+                        carry = 1;
+                    }
+                    this.SetRdDiv((this.GetRdDiv() << 1) | carry);
+                }
+                this.stepDivision--;
+            }
+        }
+        GetRdMpy() {
+            return Utility.Type.ToWord((this.RDMPYH << 8) | this.RDMPYL);
+        }
+        GetRdDiv() {
+            return Utility.Type.ToWord((this.RDDIVH << 8) | this.RDDIVL);
+        }
+        SetRdMpy(value) {
+            this.RDMPYH = Utility.Type.ToByte(value >> 8);
+            this.RDMPYL = Utility.Type.ToByte(value);
+        }
+        SetRdDiv(value) {
+            this.RDDIVH = Utility.Type.ToByte(value >> 8);
+            this.RDDIVL = Utility.Type.ToByte(value);
         }
     }
     Emulator.CpuRegister = CpuRegister;
