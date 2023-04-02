@@ -61,6 +61,13 @@ namespace Utility{
 			const s	= p.repeat(digit) + v.toString();
 			return s.substring(s.length - digit);
 		}
+		public static RemoveAfter(str: string, remove: string){
+			const i	= str.indexOf(remove);
+			if(i >= 0){
+				return str.substring(0, i);
+			}
+			return str;
+		}
 	}
 	export class Math{
 		public static IsRange(v: number, s: number, e: number): boolean{
@@ -2989,6 +2996,16 @@ namespace Emulator{
 					// ---YYYYY YYYYYYYY
 					this.PpuRegister.M7Y		= this.UpdateMode7Latch(data) & 0x1FFF;
 					return true;
+				case 0x004200:	// NMITIMEN
+					// N-VH---J
+					// No plans to implement
+					this.CpuRegister.NMITIMEN	= data;
+					return true;
+				case 0x004201:	//  WRIO
+					// 21DDDDDD
+					// No plans to implement
+					this.CpuRegister.WRIO		= data;
+					return true;
 				case 0x004202:	// WRMPYA
 					// DDDDDDDD
 					this.CpuRegister.WRMPYA		= data;
@@ -3010,6 +3027,14 @@ namespace Emulator{
 					// DDDDDDDD
 					//this.CpuRegister.WRDIVB	= data;
 					this.CpuRegister.StartDivision(data);
+					return true;
+				case 0x004207:	// HTIMEL
+				case 0x004208:	// HTIMEH
+				case 0x004209:	// VTIMEL
+				case 0x00420A:	// VTIMEH
+				case 0x00420B:	// MDMAEN
+				case 0x00420C:	// HDMAEN
+					// No plans to implement
 					return true;
 				case 0x00420D:	// MEMSEL
 					// -------F
@@ -5342,6 +5367,9 @@ namespace Application{
 			'ViewerWritten':		Main.dummyNode,
 		};
 
+		private static HeatmapColor		= '204, 0, 0';	// #CC0000
+		private static HeatmapMaxIntensity	= 0.50;
+
 		public static Initialize(){
 			Main.Assembled	= null;
 
@@ -5824,31 +5852,97 @@ namespace Application{
 			// TODO: Implements
 		}
 		private static ClearResultViewer_Heatmap(){
-			// TODO: Implements
+			Main.ClearTableBody('#ViewerHeatmap_Table', 5);
 		}
 		private static UpdateResultViewer_Heatmap(cpu: Emulator.Cpu){
-			// TODO: Implements
-		}
-		private static ClearResultViewer_Written(){
-			const tableBody	= document.querySelector<HTMLElement>('#ViewerWritten_Table tbody');
+			const tableBody	= document.querySelector<HTMLElement>('#ViewerHeatmap_Table tbody');
+			if(!tableBody){
+				return;
+			}
+
+			// data helper
+			const heatmap: Viewer_Heatmap_Log[]	= [];
+			function getEntry(stepLog: Emulator.StepLog): Viewer_Heatmap_Log{
+				for(let i = 0; i < heatmap.length; i++){
+					if(stepLog.InstructionAddress === heatmap[i].Address){
+						return heatmap[i];
+					}
+				}
+
+				let logString	= stepLog.GetLogString();
+				logString	= Utility.Format.RemoveAfter(logString, ';');
+				logString	= Utility.Format.RemoveAfter(logString, '@').trim();
+
+				const entry	= new Viewer_Heatmap_Log();
+				entry.Line	= stepLog.Source?.Line ?? -1;
+				entry.Address	= stepLog.InstructionAddress;
+				entry.Code	= stepLog.Source?.Source ?? logString;
+				entry.Cycle	= stepLog.GetExecuteMasterCycle();
+				entry.Rate	= entry.Cycle / Main.Cpu.MasterCycleCounter;
+
+				heatmap.push(entry);
+				heatmap.sort(function(a, b){
+					const diffAddress	= a.Address - b.Address;
+					if(diffAddress !== 0){
+						return diffAddress;
+					}
+					return a.Line - b.Line;
+				});
+				return entry;
+			}
+			function updateEntry(stepLog: Emulator.StepLog){
+				const entry	= getEntry(stepLog);
+
+				entry.Cycle	+= stepLog.GetExecuteMasterCycle();
+				entry.Rate	= entry.Cycle / Main.Cpu.MasterCycleCounter;
+			}
+
+			// create data
+			for(let s = 0; s < cpu.Logs.length; s++){
+				const step	= cpu.Logs[s];
+				updateEntry(step);
+			}
+
+			if(heatmap.length <= 0){
+				return;
+			}
 			DomUtility.RemoveCildren(tableBody);
 
-			if(tableBody){
+			// add rows
+			function createRow(parent: HTMLTableRowElement, className: string): HTMLTableCellElement{
+				const cell		= document.createElement('td');
+				parent.appendChild(cell);
+				cell.classList.add(className);
+				return cell
+			}
+			for(let i = 0; i < heatmap.length; i++){
+				const history		= heatmap[i];
+
 				const row		= document.createElement('tr');
+				const cellLine		= createRow(row, 'line');
+				const cellAddress	= createRow(row, 'address');
+				const cellCode		= createRow(row, 'code');
+				const cellCycle		= createRow(row, 'cycle');
+				const cellRate		= createRow(row, 'rate');
 				tableBody.appendChild(row);
 
-				function appendDummyChild(){
-					const cell		= document.createElement('td');
-					cell.textContent	= '---'
-					cell.classList.add('center');
-					row.appendChild(cell);
+				row.setAttribute('style', `background-color: RGBA(${Main.HeatmapColor}, ${history.Rate * Main.HeatmapMaxIntensity});`);
+
+				if(history.Line >= 0){
+					cellLine.textContent	= `${history.Line}`;
 				}
-				appendDummyChild();
-				appendDummyChild();
-				appendDummyChild();
-				appendDummyChild();
-				appendDummyChild();
+				else{
+					cellLine.textContent	= '---';
+					cellLine.setAttribute('style', 'text-align:center;');	// adding '.center' class has no effect
+				}
+				cellAddress.textContent	= `$${Utility.Format.ToHexString(history.Address, 6)}`;
+				cellCode.textContent	= history.Code;
+				cellCycle.textContent	= `${history.Cycle}`;
+				cellRate.textContent	= `${(history.Rate * 100).toFixed(1)} %`;
 			}
+		}
+		private static ClearResultViewer_Written(){
+			Main.ClearTableBody('#ViewerWritten_Table', 5);
 		}
 		private static UpdateResultViewer_Written(cpu: Emulator.Cpu){
 			const tableBody	= document.querySelector<HTMLElement>('#ViewerWritten_Table tbody');
@@ -5944,6 +6038,26 @@ namespace Application{
 				}
 			}
 
+		}
+
+		private static ClearTableBody(selector: string, rowCount: number){
+			const tableBody	= document.querySelector<HTMLElement>(selector + ' tbody');
+			DomUtility.RemoveCildren(tableBody);
+
+			if(tableBody){
+				const row		= document.createElement('tr');
+				tableBody.appendChild(row);
+
+				function appendDummyChild(){
+					const cell		= document.createElement('td');
+					cell.textContent	= '---'
+					cell.classList.add('center');
+					row.appendChild(cell);
+				}
+				for(let i = 0; i < rowCount; i++){
+					appendDummyChild();
+				}
+			}
 		}
 
 	}
@@ -6154,6 +6268,13 @@ namespace Application{
 		Written
 	}
 
+	class Viewer_Heatmap_Log{
+		Line: number			= 0;
+		Address: number			= 0;
+		Code: string			= '';
+		Cycle: number			= 0;
+		Rate: number			= 0;
+	}
 	class Viewer_Written_Log{
 		Region: Emulator.AccessRegion	= Emulator.AccessRegion.MainRAM;
 		Address: number			= 0;

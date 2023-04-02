@@ -341,6 +341,45 @@ fieldset dl{
 	overflow		: scroll;
 }
 
+#ViewerHeatmap_Table{
+	width			: var(--application-width);
+}
+#ViewerHeatmap th.line{
+	width			: 6ch;
+}
+#ViewerHeatmap th.address{
+	width			: 10ch;
+}
+#ViewerHeatmap th.code{
+	width			: calc(var(--application-width) - 32ch);
+}
+#ViewerHeatmap th.cycle{
+	width			: 8ch;
+}
+#ViewerHeatmap th.rate{
+	width			: 8ch;
+}
+#ViewerHeatmap tbody td{
+	font-family		: var(--monospace-font);
+}
+#ViewerHeatmap td.line{
+	text-align		: right;
+}
+#ViewerHeatmap td.address{
+	text-align		: center;
+}
+#ViewerHeatmap td.code{
+	white-space		: pre;
+	overflow-x		: auto;
+	max-width		: calc(var(--application-width) - 32ch);
+}
+#ViewerHeatmap td.cycle{
+	text-align		: right;
+}
+#ViewerHeatmap td.rate{
+	text-align		: right;
+}
+
 #ViewerWritten_Table{
 	width			: var(--application-width);
 }

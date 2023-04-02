@@ -1,8 +1,12 @@
 "use strict";
+//--------------------------------------------------
+// SNES master cycle viewer
+//--------------------------------------------------
 var Utility;
 (function (Utility) {
     class Type {
         static Modulo(v, m) {
+            // Floored division
             return ((v % m) + m) % m;
         }
         static ToByte(v) {
@@ -57,6 +61,13 @@ var Utility;
             const p = (padZero) ? '0' : ' ';
             const s = p.repeat(digit) + v.toString();
             return s.substring(s.length - digit);
+        }
+        static RemoveAfter(str, remove) {
+            const i = str.indexOf(remove);
+            if (i >= 0) {
+                return str.substring(0, i);
+            }
+            return str;
         }
     }
     Utility.Format = Format;
@@ -120,16 +131,19 @@ var Utility;
                 const isEscapeChar = (c == '\\');
                 if (enclosingChar) {
                     if (isEscaping) {
+                        // end escape
                         isEscaping = false;
                         output += c;
                         continue;
                     }
                     if (isEscapeChar) {
+                        // start escape
                         isEscaping = true;
                         output += c;
                         continue;
                     }
                     if (c == enclosingChar) {
+                        // end enclose
                         enclosingChar = null;
                         output += c;
                         i++;
@@ -139,6 +153,7 @@ var Utility;
                     continue;
                 }
                 if (isEncloseChar) {
+                    // start enclose
                     enclosingChar = c;
                     output += c;
                     continue;
@@ -148,6 +163,7 @@ var Utility;
                 break;
             }
             if (enclosingChar) {
+                // format error
                 return null;
             }
             this.rawIndex = i;
@@ -176,6 +192,7 @@ var Utility;
     }
     Utility.CharacterReadStream = CharacterReadStream;
 })(Utility || (Utility = {}));
+//--------------------------------------------------
 var Emulator;
 (function (Emulator) {
     class Cpu {
@@ -217,16 +234,18 @@ var Emulator;
             if (this.PendingRst) {
                 this.PushResetEvent(this.PendingBoot);
                 this.JumpInterruptHandler(InterruptType.EmulationRST);
-                this.Reset();
+                this.Reset(); // to override the program counter
                 this.PendingBoot = false;
                 this.PendingRst = false;
             }
             if (this.CpuHalted) {
                 return;
             }
+            // TODO: Implement interrupts
             if (this.CpuSlept) {
                 return;
             }
+            // Get next instruction
             if (this.yieldFunction === null) {
                 this.yieldFunction = this.ExecuteInstruction();
             }
@@ -234,6 +253,7 @@ var Emulator;
             if (execute.done) {
                 this.yieldFunction = null;
             }
+            // Get last master cycle
             const lastLog = this.Logs[this.Logs.length - 1];
             const lastAccess = lastLog.AccessLog[lastLog.AccessLog.length - 1];
             const lastCycle = lastAccess.Cycle;
@@ -246,8 +266,10 @@ var Emulator;
             } while (this.yieldFunction !== null);
         }
         Reset() {
+            //this.Registers		= new Registers();
             this.MasterCycleCounter = 0;
             this.CpuCycleCounter = 0;
+            //this.Logs			= [];
             this.CpuHalted = false;
             this.CpuSlept = false;
             this.PendingRst = true;
@@ -279,9 +301,11 @@ var Emulator;
             pushStack(cpu.Registers.PC);
             pushStack(cpu.Registers.P);
             if (boot) {
+                // Boot: $01FD
                 cpu.Registers.SetRegisterS(sp);
             }
             else {
+                // RST: SP - 3
                 cpu.Registers.SetRegisterS(sp + 1);
             }
         }
@@ -304,12 +328,15 @@ var Emulator;
             log.AccessLog.push(opcode[1]);
             this.CpuCycleCounter++;
             yield;
+            // Helper
+            //--------------------------------------------------
             function calculateInstructionLength() {
                 const endPC = cpu.Registers.PC;
                 const diffPC = endPC - startPC;
                 log.InstructionLength = diffPC;
             }
             function pushDummyAccess(accessType, readAccess = true, writeAccess = false, offset = 0) {
+                // VDA = 0, VPA = 0
                 const address = (cpu.Memory.AddressBus & 0xFF0000) + Utility.Type.ToWord((cpu.Memory.AddressBus & 0x00FFFF) + offset);
                 if (readAccess) {
                     const dummyAccess = cpu.ReadDataByte(accessType, address);
@@ -366,6 +393,8 @@ var Emulator;
                 cpu.Registers.SetStatusFlagN((value & msbMask) !== 0);
                 cpu.Registers.SetStatusFlagZ((value & valueMask) === 0);
             }
+            // Addressing
+            //--------------------------------------------------
             function* AddressingAbsDbr() {
                 const operand1Low = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1Low[1]);
@@ -655,14 +684,16 @@ var Emulator;
             }
             function* AddressingAccumulator() {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 log.Addressing = Addressing.Accumulator;
                 yield* instructionFunction[1];
             }
             function* AddressingXyc() {
+                // destination
                 const operand1Bank = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1Bank[1]);
                 yield;
+                // source
                 const operand2Bank = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand2Bank[1]);
                 calculateInstructionLength();
@@ -771,7 +802,7 @@ var Emulator;
                     yield;
                 }
                 const operand1 = operand1Low[0].Data;
-                const indirectAddress = cpu.Registers.ToDirectAddress(operand1);
+                const indirectAddress = cpu.Registers.ToDirectAddress(operand1); // TODO: ignore when PEI?
                 const effectiveAddressLow = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 0);
                 log.AccessLog.push(effectiveAddressLow[1]);
                 yield;
@@ -834,7 +865,7 @@ var Emulator;
                     yield;
                 }
                 const operand1 = operand1Low[0].Data;
-                const indirectAddress = cpu.Registers.ToDirectAddress(operand1);
+                const indirectAddress = cpu.Registers.ToDirectAddress(operand1); // TODO: ignore?
                 const effectiveAddressLow = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 0);
                 log.AccessLog.push(effectiveAddressLow[1]);
                 yield;
@@ -862,7 +893,7 @@ var Emulator;
                     yield;
                 }
                 const operand1 = operand1Low[0].Data;
-                const indirectAddress = cpu.Registers.ToDirectAddress(operand1);
+                const indirectAddress = cpu.Registers.ToDirectAddress(operand1); // TODO: ignore?
                 const effectiveAddressLow = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 0);
                 log.AccessLog.push(effectiveAddressLow[1]);
                 yield;
@@ -977,10 +1008,10 @@ var Emulator;
             }
             function* AddressingImplied(additionalWait = false) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 if (additionalWait) {
                     yield;
-                    pushDummyAccess(AccessType.ReadDummy);
+                    pushDummyAccess(AccessType.ReadDummy); // read next pc (incremented)
                 }
                 log.Addressing = Addressing.Implied;
                 yield* instructionFunction[1];
@@ -1011,11 +1042,12 @@ var Emulator;
                 log.EffectiveAddress = effectiveAddress;
                 yield* instructionFunction[1];
             }
+            // 22a: S (ABORT, IRQ, NMI, RES)
             function* AddressingStackPull(lengthFlag) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 yield;
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy); // read next pc (incremented)
                 yield;
                 const stackPointer = cpu.Registers.S;
                 const stackLow = pushPullStack();
@@ -1032,7 +1064,7 @@ var Emulator;
             }
             function* AddressingStackPush(value, lengthFlag) {
                 const stackPointer = cpu.Registers.S;
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 yield;
                 if (!lengthFlag) {
                     pushPushStack(value >> 8);
@@ -1044,11 +1076,14 @@ var Emulator;
                 log.EffectiveValue = value;
                 yield* instructionFunction[1];
             }
+            // 22d: S (PEA) (-> abs)
+            // 22e: S (PEI) (-> (dp))
+            // 22f: S (PER) (-> rlong)
             function* AddressingStackReturnInterrupt() {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 yield;
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy); // read next pc (incremented)
                 yield;
                 const stackStatus = pushPullStack();
                 yield;
@@ -1068,9 +1103,9 @@ var Emulator;
             }
             function* AddressingStackReturn(lengthFlag) {
                 calculateInstructionLength();
-                pushDummyAccess(AccessType.ReadDummy, true, false, 1);
+                pushDummyAccess(AccessType.ReadDummy, true, false, 1); // read next pc
                 yield;
-                pushDummyAccess(AccessType.ReadDummy);
+                pushDummyAccess(AccessType.ReadDummy); // read next pc (incremented)
                 yield;
                 const stackPCLow = pushPullStack();
                 yield;
@@ -1078,9 +1113,11 @@ var Emulator;
                 yield;
                 let stackPCBank = cpu.Registers.PB;
                 if (lengthFlag) {
+                    // RTS
                     pushDummyAccess(AccessType.ReadDummy);
                 }
                 else {
+                    // RTL
                     stackPCBank = pushPullStack();
                 }
                 let effectiveAddress = (stackPCBank << 16) | (stackPCHigh << 8) | stackPCLow;
@@ -1104,11 +1141,12 @@ var Emulator;
                 yield;
                 let statusRegister = cpu.Registers.P;
                 if (cpu.Registers.GetStatusFlagE()) {
+                    // for BRK
                     statusRegister |= emulationMask;
                 }
                 pushPushStack(statusRegister);
                 yield;
-                log.Addressing = Addressing.Immediate8;
+                log.Addressing = Addressing.Immediate8; // show signature
                 log.Operand1 = operand1Low[0].Data;
                 log.EffectiveAddress = stackPointer;
                 log.EffectiveValue = operand1Low[0].Data;
@@ -1152,6 +1190,8 @@ var Emulator;
                 log.EffectiveAddress = effectiveAddress;
                 yield* instructionFunction[1];
             }
+            // Instruction
+            //--------------------------------------------------
             function* InstructionDummy(instruction) {
                 log.Instruction = instruction;
             }
@@ -1161,8 +1201,10 @@ var Emulator;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
+                // index register is affected by X flag
                 cpu.Registers.SetRegisterX(cpu.Registers.GetRegisterX() + direction);
                 cpu.Registers.SetRegisterY(cpu.Registers.GetRegisterY() + direction);
+                // accumulator is not affected by M flag
                 const length = cpu.Registers.GetRegisterA(true) - 1;
                 if (length >= 0) {
                     cpu.Registers.SetProgramCounter(revertAddress);
@@ -1300,10 +1342,12 @@ var Emulator;
                 let writeValue = 0;
                 let overflowResult = 0;
                 if (!cpu.Registers.GetStatusFlagD()) {
+                    // binary
                     writeValue = operand1 + operand2 + intCarry;
                     overflowResult = writeValue;
                 }
                 else {
+                    // decimal
                     let stepDigitMask = 0x000F;
                     let stepResultMask = 0x000F;
                     let stepCarry = 0x000A;
@@ -1329,8 +1373,10 @@ var Emulator;
                     }
                     writeValue |= carry;
                 }
+                // update C flag
                 const cFlag = writeValue > valueMask;
                 cpu.Registers.SetStatusFlagC(cFlag);
+                // update V flag
                 const signOperand1 = (operand1 & msbMask);
                 const signOperand2 = (operand2 & msbMask);
                 const signResult = (overflowResult & msbMask);
@@ -1651,10 +1697,12 @@ var Emulator;
                 let overflowResult = 0;
                 operand2 ^= valueMask;
                 if (!cpu.Registers.GetStatusFlagD()) {
+                    // binary
                     writeValue = operand1 + operand2 + intCarry;
                     overflowResult = writeValue;
                 }
                 else {
+                    // decimal
                     let stepDigitMask = 0x000F;
                     let stepResultMask = 0x000F;
                     let stepCarry = 0x0010;
@@ -1680,8 +1728,10 @@ var Emulator;
                     }
                     writeValue |= carry;
                 }
+                // update C flag
                 const cFlag = writeValue > valueMask;
                 cpu.Registers.SetStatusFlagC(cFlag);
+                // update V flag
                 const signOperand1 = (operand1 & msbMask);
                 const signOperand2 = (operand2 & msbMask);
                 const signResult = (overflowResult & msbMask);
@@ -1783,9 +1833,9 @@ var Emulator;
             const flagM = cpu.Registers.GetStatusFlagM();
             const flagX = cpu.Registers.GetStatusFlagX();
             const InstructionTable = [
-                [AddressingStackInterrupt(0x30), InstructionBRK()],
+                [AddressingStackInterrupt(0x30 /* nvRBdizc */), InstructionBRK()],
                 [AddressingDpIdxIdrX(), InstructionORA()],
-                [AddressingStackInterrupt(0x20), InstructionCOP()],
+                [AddressingStackInterrupt(0x20 /* nvRbdizc */), InstructionCOP()],
                 [AddressingStackRel(), InstructionORA()],
                 [AddressingDpRmw(), InstructionTSB()],
                 [AddressingDp(), InstructionORA()],
@@ -1807,7 +1857,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionORA()],
                 [AddressingDpIdxXRmw(), InstructionASLMemory(Instruction.ASL, false)],
                 [AddressingDpIdrLongIdxY(), InstructionORA()],
-                [AddressingImplied(), InstructionClearFlag(Instruction.CLC, 0x01)],
+                [AddressingImplied(), InstructionClearFlag(Instruction.CLC, 0x01 /* nvmxdizC */)],
                 [AddressingAbsIdxY(false), InstructionORA()],
                 [AddressingAccumulator(), InstructionINCRegister()],
                 [AddressingImplied(), InstructionTxx(Instruction.TCS, regs.GetRegisterA(true), 'S', null)],
@@ -1839,7 +1889,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionAND()],
                 [AddressingDpIdxXRmw(), InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())],
                 [AddressingDpIdrLongIdxY(), InstructionAND()],
-                [AddressingImplied(), InstructionSetFlag(Instruction.SEC, 0x01)],
+                [AddressingImplied(), InstructionSetFlag(Instruction.SEC, 0x01 /* nvmxdizC */)],
                 [AddressingAbsIdxY(false), InstructionAND()],
                 [AddressingAccumulator(), InstructionDECRegister()],
                 [AddressingImplied(), InstructionTxx(Instruction.TSC, regs.S, 'C', false)],
@@ -1871,7 +1921,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionEOR()],
                 [AddressingDpIdxXRmw(), InstructionLSRMemory(Instruction.LSR, false)],
                 [AddressingDpIdrLongIdxY(), InstructionEOR()],
-                [AddressingImplied(), InstructionClearFlag(Instruction.CLI, 0x04)],
+                [AddressingImplied(), InstructionClearFlag(Instruction.CLI, 0x04 /* nvmxdIzc */)],
                 [AddressingAbsIdxY(false), InstructionEOR()],
                 [AddressingStackPush(regs.GetRegisterY(), flagX), InstructionDummy(Instruction.PHY)],
                 [AddressingImplied(), InstructionTxx(Instruction.TCD, regs.GetRegisterA(true), 'D', false)],
@@ -1903,7 +1953,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionADC()],
                 [AddressingDpIdxXRmw(), InstructionLSRMemory(Instruction.ROR, regs.GetStatusFlagC())],
                 [AddressingDpIdrLongIdxY(), InstructionADC()],
-                [AddressingImplied(), InstructionSetFlag(Instruction.SEI, 0x04)],
+                [AddressingImplied(), InstructionSetFlag(Instruction.SEI, 0x04 /* nvmxdIzc */)],
                 [AddressingAbsIdxY(false), InstructionADC()],
                 [AddressingStackPull(flagX), InstructionSetRegister(Instruction.PLY, 'Y')],
                 [AddressingImplied(), InstructionTxx(Instruction.TDC, regs.D, 'C', false)],
@@ -1967,7 +2017,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionLDA()],
                 [AddressingDpIdxY(), InstructionLDX()],
                 [AddressingDpIdrLongIdxY(), InstructionLDA()],
-                [AddressingImplied(), InstructionClearFlag(Instruction.CLV, 0x40)],
+                [AddressingImplied(), InstructionClearFlag(Instruction.CLV, 0x40 /* nVmxdizc */)],
                 [AddressingAbsIdxY(false), InstructionLDA()],
                 [AddressingImplied(), InstructionTxx(Instruction.TSX, regs.S, 'X', flagX)],
                 [AddressingImplied(), InstructionTxx(Instruction.TXY, regs.GetRegisterY(), 'X', flagX)],
@@ -1999,7 +2049,7 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionCMP()],
                 [AddressingDpIdxY(), InstructionDECMemory()],
                 [AddressingDpIdrLongIdxY(), InstructionCMP()],
-                [AddressingImplied(), InstructionClearFlag(Instruction.CLD, 0x08)],
+                [AddressingImplied(), InstructionClearFlag(Instruction.CLD, 0x08 /* nvmxDizc */)],
                 [AddressingAbsIdxY(false), InstructionCMP()],
                 [AddressingStackPush(regs.GetRegisterX(), flagX), InstructionDummy(Instruction.PHX)],
                 [AddressingImplied(), InstructionSTP()],
@@ -2031,14 +2081,14 @@ var Emulator;
                 [AddressingDpIdxX(), InstructionSBC()],
                 [AddressingDpIdxY(), InstructionINCMemory()],
                 [AddressingDpIdrLongIdxY(), InstructionSBC()],
-                [AddressingImplied(), InstructionSetFlag(Instruction.SED, 0x08)],
+                [AddressingImplied(), InstructionSetFlag(Instruction.SED, 0x08 /* nvmxDizc */)],
                 [AddressingAbsIdxY(false), InstructionSBC()],
                 [AddressingStackPull(flagX), InstructionSetRegister(Instruction.PLX, 'X')],
                 [AddressingImplied(), InstructionXCE()],
                 [AddressingAbsIdxIdrX(true), InstructionJump(Instruction.JSR, 0)],
                 [AddressingAbsIdxX(false), InstructionSBC()],
                 [AddressingAbsIdxX(false), InstructionINCMemory()],
-                [AddressingLongIdxX(), InstructionSBC()],
+                [AddressingLongIdxX(), InstructionSBC()], // FF: SBC long, X
             ];
             instructionFunction = InstructionTable[opcode[0].Data];
             if (!instructionFunction) {
@@ -2108,7 +2158,7 @@ var Emulator;
             this.Y = 0;
             this.S = 0x01FD;
             this.PC = 0;
-            this.P = 0x34;
+            this.P = 0x34; // nvRBdIzc
             this.D = 0;
             this.PB = 0;
             this.DB = 0;
@@ -2151,6 +2201,8 @@ var Emulator;
                     case 'C':
                         this.SetRegisterA(value, true);
                         break;
+                    //case 'XX':	this.SetRegisterX(value, true);		break;
+                    //case 'YX':	this.SetRegisterY(value, true);		break;
                 }
             }
         }
@@ -2270,6 +2322,7 @@ var Emulator;
             this.ToEmulationMode();
         }
         SwapStatusFlagCE() {
+            // swap C, E flags
             let e = this.GetStatusFlagC();
             this.SetStatusFlagC(this.E);
             this.E = e;
@@ -2279,9 +2332,13 @@ var Emulator;
             if (!this.GetStatusFlagE()) {
                 return;
             }
+            // to emulation mode
+            // set MX(RB) flags
             this.P |= 0x30;
+            // clear index registers high byte
             this.X &= 0x00FF;
             this.Y &= 0x00FF;
+            // set stack pointer high byte
             this.S = (this.S & 0x00FF) | 0x0100;
         }
         GetRegisterA(forceFull = false) {
@@ -2376,6 +2433,8 @@ var Emulator;
             return this.ToRelativeAddress(0);
         }
         ToDirectAddress(address) {
+            // see also: W65C816S Datasheet 7.2 Direct Addressing
+            // TODO: > except for [Direct] and [Direct],Y addressing modes and the PEI instruction which will increment from 0000FE or 0000FF
             return this.D + (address & this.GetOperandMask());
         }
         ToDataAddress(address) {
@@ -2463,38 +2522,54 @@ var Emulator;
             const bank = Utility.Type.ToByte(address >> 16);
             const page = Utility.Type.ToWord(address);
             if (Utility.Math.IsRange(bank, 0x7E, 0x80)) {
+                // Main RAM
                 return [AccessRegion.MainRAM, address];
             }
             else if ((address & 0x40E000) === 0x000000) {
+                // mirrored RAM
                 address = 0x7E0000 | (address & 0x001FFF);
                 return [AccessRegion.MainRAM, address];
             }
             else if (((bank & 0x40) === 0) && Utility.Math.IsRange(page, 0x2000, 0x6000)) {
+                // I/O registers
                 address = (address & 0x007FFF);
                 return [AccessRegion.IO, address];
             }
             if (this.ROMMapping === RomMapping.LoROM) {
                 if (((bank & 0x40) === 0) && Utility.Math.IsRange(page, 0x6000, 0x8000)) {
+                    // Open bus
                     return [AccessRegion.OpenBus, address];
                 }
                 else if (Utility.Math.IsRange(bank, 0x70, 0x7E) && (page < 0x8000)) {
+                    // SRAM
+                    // move to $F0-$FF
                     address = (address | 0x800000);
                     return [AccessRegion.StaticRAM, address];
                 }
                 else {
+                    // ROM
+                    // move to $80-$FF bank, $8000-$FFFF page
                     address = (address | 0x808000);
                     return [AccessRegion.ROM, address];
                 }
             }
             else if (this.ROMMapping === RomMapping.HiROM) {
                 if (Utility.Math.IsRange(bank & 0x7F, 0x00, 0x10) && Utility.Math.IsRange(page, 0x6000, 0x8000)) {
+                    // Open bus
+                    // $00-0F,80-8F:6000-7FFF
+                    // Since there are multiple variants, only the common part is open bus
+                    // https://problemkaputt.de/fullsnes.htm#snescarthirommappingromdividedinto64kbanksaround500games
                     return [AccessRegion.OpenBus, address];
                 }
                 else if (Utility.Math.IsRange(bank & 0x7F, 0x00, 0x40) && Utility.Math.IsRange(page, 0x6000, 0x8000)) {
+                    // SRAM
+                    // move to $30-$3F
                     address = (address | 0x300000) & 0x3FFFFF;
                     return [AccessRegion.StaticRAM, address];
                 }
                 else {
+                    // ROM
+                    // move to $C0-$FF bank
                     address = (address | 0xC00000);
                     return [AccessRegion.ROM, address];
                 }
@@ -2503,19 +2578,19 @@ var Emulator;
         }
         HookIORead(address) {
             switch (address) {
-                case 0x002134:
+                case 0x002134: // MPYL
                     return [this.PpuRegister.MPYL, 0xFF];
-                case 0x002135:
+                case 0x002135: // MPYM
                     return [this.PpuRegister.MPYM, 0xFF];
-                case 0x002136:
+                case 0x002136: // MPYH
                     return [this.PpuRegister.MPYH, 0xFF];
-                case 0x004214:
+                case 0x004214: // RDDIVL
                     return [this.CpuRegister.RDDIVL, 0xFF];
-                case 0x004215:
+                case 0x004215: // RDDIVH
                     return [this.CpuRegister.RDDIVH, 0xFF];
-                case 0x004216:
+                case 0x004216: // RDMPYL
                     return [this.CpuRegister.RDMPYL, 0xFF];
-                case 0x004217:
+                case 0x004217: // RDMPYH
                     return [this.CpuRegister.RDMPYH, 0xFF];
             }
             if ((address & 0xFFFF80) == 0x004300) {
@@ -2528,50 +2603,87 @@ var Emulator;
             }
             return [0, 0];
         }
+        /**
+         * @returns memory hooked (true = I/O / false = memory)
+         */
         HookIOWrite(address, data) {
             switch (address) {
-                case 0x00210D:
+                case 0x00210D: // BG1HOFS
+                    // ---XXXXX XXXXXXXX
                     this.PpuRegister.BG1HOFS = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
-                case 0x00210E:
+                case 0x00210E: // BG1VOFS
+                    // ---YYYYY YYYYYYYY
                     this.PpuRegister.BG1VOFS = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
-                case 0x00211B:
+                case 0x00211B: // M7A
+                    // DDDDDDDD dddddddd
                     this.PpuRegister.M7A = this.UpdateMode7Latch(data);
                     this.PpuRegister.StartMultiplication();
                     return true;
-                case 0x00211C:
+                case 0x00211C: // M7B
+                    // DDDDDDDD dddddddd
                     this.PpuRegister.M7B = this.UpdateMode7Latch(data);
                     this.PpuRegister.StartMultiplication();
                     return true;
-                case 0x00211D:
+                case 0x00211D: // M7C
+                    // DDDDDDDD dddddddd
                     this.PpuRegister.M7C = this.UpdateMode7Latch(data);
                     return true;
-                case 0x00210E:
+                case 0x00210E: // M7D
+                    // DDDDDDDD dddddddd
                     this.PpuRegister.M7D = this.UpdateMode7Latch(data);
                     return true;
-                case 0x00211F:
+                case 0x00211F: // M7X
+                    // ---XXXXX XXXXXXXX
                     this.PpuRegister.M7X = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
-                case 0x002120:
+                case 0x002120: // M7Y
+                    // ---YYYYY YYYYYYYY
                     this.PpuRegister.M7Y = this.UpdateMode7Latch(data) & 0x1FFF;
                     return true;
-                case 0x004202:
+                case 0x004200: // NMITIMEN
+                    // N-VH---J
+                    // No plans to implement
+                    this.CpuRegister.NMITIMEN = data;
+                    return true;
+                case 0x004201: //  WRIO
+                    // 21DDDDDD
+                    // No plans to implement
+                    this.CpuRegister.WRIO = data;
+                    return true;
+                case 0x004202: // WRMPYA
+                    // DDDDDDDD
                     this.CpuRegister.WRMPYA = data;
                     return true;
-                case 0x004203:
+                case 0x004203: // WRMPYB
+                    // DDDDDDDD
+                    //this.CpuRegister.WRMPYB	= data;
                     this.CpuRegister.StartMultiplication(data);
                     return true;
-                case 0x004204:
+                case 0x004204: // WRDIVL
+                    // LLLLLLLL
                     this.CpuRegister.WRDIVL = data;
                     return true;
-                case 0x004205:
+                case 0x004205: // WRDIVH
+                    // HHHHHHHH
                     this.CpuRegister.WRDIVH = data;
                     return true;
-                case 0x004206:
+                case 0x004206: // WRDIVB
+                    // DDDDDDDD
+                    //this.CpuRegister.WRDIVB	= data;
                     this.CpuRegister.StartDivision(data);
                     return true;
-                case 0x00420D:
+                case 0x004207: // HTIMEL
+                case 0x004208: // HTIMEH
+                case 0x004209: // VTIMEL
+                case 0x00420A: // VTIMEH
+                case 0x00420B: // MDMAEN
+                case 0x00420C: // HDMAEN
+                    // No plans to implement
+                    return true;
+                case 0x00420D: // MEMSEL
+                    // -------F
                     this.IsFastROM = (data & 1) !== 0;
                     return true;
             }
@@ -2584,6 +2696,8 @@ var Emulator;
             return false;
         }
         UpdateBus(address, data) {
+            // Reference:
+            // 	https://wiki.superfamicom.org/memory-mapping
             address = Utility.Type.ToLong(address);
             data = Utility.Type.ToByte(data);
             let speed = (this.IsFastROM) ? AccessSpeed.Fast : AccessSpeed.Slow;
@@ -2592,67 +2706,70 @@ var Emulator;
             if (bank <= 0x3F) {
                 if (page <= 0x1FFF) {
                     speed = AccessSpeed.Slow;
-                }
+                } // $00-3F:0000-1FFF
                 else if (page <= 0x20FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $00-3F:2000-20FF
                 else if (page <= 0x21FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $00-3F:2100-21FF
                 else if (page <= 0x3FFF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $00-3F:2200-3FFF
                 else if (page <= 0x41FF) {
                     speed = AccessSpeed.XSlow;
-                }
+                } // $00-3F:4000-41FF
                 else if (page <= 0x43FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $00-3F:4200-43FF
                 else if (page <= 0x5FFF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $00-3F:4400-5FFF
                 else if (page <= 0x7FFF) {
                     speed = AccessSpeed.Slow;
-                }
+                } // $00-3F:6000-7FFF
                 else if (page <= 0xFFFF) {
                     speed = AccessSpeed.Slow;
-                }
+                } // $00-3F:8000-FFFF
             }
             else if (bank <= 0x7D) {
-                speed = AccessSpeed.Slow;
+                speed = AccessSpeed.Slow; // $40-7D:0000-FFFF
             }
             else if (bank <= 0x7F) {
-                speed = AccessSpeed.Slow;
+                speed = AccessSpeed.Slow; // $7E-7F:0000-FFFF
             }
             else if (bank <= 0xBF) {
                 if (page <= 0x1FFF) {
                     speed = AccessSpeed.Slow;
-                }
+                } // $80-BF:0000-1FFF
                 else if (page <= 0x20FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $80-BF:2000-20FF
                 else if (page <= 0x21FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $80-BF:2100-21FF
                 else if (page <= 0x3FFF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $80-BF:2200-3FFF
                 else if (page <= 0x41FF) {
                     speed = AccessSpeed.XSlow;
-                }
+                } // $80-BF:4000-41FF
                 else if (page <= 0x43FF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $80-BF:4200-43FF
                 else if (page <= 0x5FFF) {
                     speed = AccessSpeed.Fast;
-                }
+                } // $80-BF:4400-5FFF
                 else if (page <= 0x7FFF) {
                     speed = AccessSpeed.Slow;
-                }
-                else if (page <= 0xFFFF) { }
+                } // $80-BF:6000-7FFF
+                else if (page <= 0xFFFF) { /* MEMSEL: Fast or Slow */ } // $80-BF:8000-FFFF
             }
             else if (bank <= 0xFF) {
+                /* MEMSEL: Fast or Slow */ // $C0-FF:0000-FFFF
             }
+            // update bus
+            // TODO: Emulate PPU1, 2 MDR
             this.AddressBus = address;
             this.DataBus = data;
             return speed;
@@ -2670,36 +2787,36 @@ var Emulator;
     Emulator.Memory = Memory;
     class CpuRegister {
         constructor() {
-            this.NMITIMEN = 0;
-            this.WRIO = 0;
-            this.WRMPYA = 0;
-            this.WRMPYB = 0;
-            this.WRDIVL = 0;
-            this.WRDIVH = 0;
-            this.WRDIVB = 0;
-            this.HTIMEL = 0;
-            this.HTIMEH = 0;
-            this.VTIMEL = 0;
-            this.VTIMEH = 0;
-            this.MDMAEN = 0;
-            this.HDMAEN = 0;
-            this.MEMSEL = 0;
-            this.RDNMI = 0;
-            this.TIMEUP = 0;
-            this.HVBJOY = 0;
-            this.RDIO = 0;
-            this.RDDIVL = 0;
-            this.RDDIVH = 0;
-            this.RDMPYL = 0;
-            this.RDMPYH = 0;
-            this.JOY1L = 0;
-            this.JOY1H = 0;
-            this.JOY2L = 0;
-            this.JOY2H = 0;
-            this.JOY3L = 0;
-            this.JOY3H = 0;
-            this.JOY4L = 0;
-            this.JOY4H = 0;
+            this.NMITIMEN = 0; // $4200
+            this.WRIO = 0; // $4201
+            this.WRMPYA = 0; // $4202 8bit
+            this.WRMPYB = 0; // $4203   * 8bit = unsigned 16bit
+            this.WRDIVL = 0; // $4204 unsigned 16bit
+            this.WRDIVH = 0; // $4205
+            this.WRDIVB = 0; // $4206 unsigned 8bit
+            this.HTIMEL = 0; // $4207
+            this.HTIMEH = 0; // $4208
+            this.VTIMEL = 0; // $4209
+            this.VTIMEH = 0; // $420A
+            this.MDMAEN = 0; // $420B
+            this.HDMAEN = 0; // $420C
+            this.MEMSEL = 0; // $420D
+            this.RDNMI = 0; // $4210
+            this.TIMEUP = 0; // $4211
+            this.HVBJOY = 0; // $4212
+            this.RDIO = 0; // $4213
+            this.RDDIVL = 0; // $4214 unsigned 16bit result
+            this.RDDIVH = 0; // $4215
+            this.RDMPYL = 0; // $4216 unsigned 16bit multiplication result / division remainder
+            this.RDMPYH = 0; // $4217
+            this.JOY1L = 0; // $4218
+            this.JOY1H = 0; // $4219
+            this.JOY2L = 0; // $421A
+            this.JOY2H = 0; // $421B
+            this.JOY3L = 0; // $421C
+            this.JOY3H = 0; // $421D
+            this.JOY4L = 0; // $421E
+            this.JOY4H = 0; // $421F
             this.shiftMulDiv = 0;
             this.stepMultiplication = 0;
             this.stepDivision = 0;
@@ -2768,78 +2885,78 @@ var Emulator;
     Emulator.CpuRegister = CpuRegister;
     class PpuRegister {
         constructor() {
-            this.INIDISP = 0;
-            this.OBSEL = 0;
-            this.OAMADDL = 0;
-            this.OAMADDH = 0;
-            this.OAMDATA = 0;
-            this.BGMODE = 0;
-            this.MOSAIC = 0;
-            this.BG1SC = 0;
-            this.BG2SC = 0;
-            this.BG3SC = 0;
-            this.BG4SC = 0;
-            this.BG12NBA = 0;
-            this.BG34NBA = 0;
-            this.BG1HOFS = 0;
-            this.BG1VOFS = 0;
-            this.BG2HOFS = 0;
-            this.BG2VOFS = 0;
-            this.BG3HOFS = 0;
-            this.BG3VOFS = 0;
-            this.BG4HOFS = 0;
-            this.BG4VOFS = 0;
-            this.VMAIN = 0;
-            this.VMADDL = 0;
-            this.VMADDH = 0;
-            this.VMDATAL = 0;
-            this.VMDATAH = 0;
-            this.M7SEL = 0;
-            this.M7A = 0;
-            this.M7B = 0;
-            this.M7C = 0;
-            this.M7D = 0;
-            this.M7X = 0;
-            this.M7Y = 0;
-            this.CGADD = 0;
-            this.CGDATA = 0;
-            this.W12SEL = 0;
-            this.W34SEL = 0;
-            this.WOBJSEL = 0;
-            this.WH0 = 0;
-            this.WH1 = 0;
-            this.WH2 = 0;
-            this.WH3 = 0;
-            this.WBGLOG = 0;
-            this.WOBJLOG = 0;
-            this.TM = 0;
-            this.TS = 0;
-            this.TMW = 0;
-            this.TSW = 0;
-            this.CGWSEL = 0;
-            this.CGADSUB = 0;
-            this.COLDATA = 0;
-            this.SETINI = 0;
-            this.MPYL = 0;
-            this.MPYM = 0;
-            this.MPYH = 0;
-            this.SLHV = 0;
-            this.OAMDATAREAD = 0;
-            this.VMDATALREAD = 0;
-            this.VMDATAHREAD = 0;
-            this.CGDATAREAD = 0;
-            this.OPHCT = 0;
-            this.OPVCT = 0;
-            this.STAT77 = 0;
-            this.STAT78 = 0;
-            this.APUIO0 = 0;
-            this.APUIO1 = 0;
-            this.APUIO2 = 0;
-            this.APUIO3 = 0;
-            this.WMDATA = 0;
-            this.WMADDL = 0;
-            this.WMADDM = 0;
-            this.WMADDH = 0;
+            this.INIDISP = 0; // $2100
+            this.OBSEL = 0; // $2101
+            this.OAMADDL = 0; // $2102
+            this.OAMADDH = 0; // $2103
+            this.OAMDATA = 0; // $2104
+            this.BGMODE = 0; // $2105
+            this.MOSAIC = 0; // $2106
+            this.BG1SC = 0; // $2107
+            this.BG2SC = 0; // $2108
+            this.BG3SC = 0; // $2109
+            this.BG4SC = 0; // $210A
+            this.BG12NBA = 0; // $210B
+            this.BG34NBA = 0; // $210C
+            this.BG1HOFS = 0; // $210D
+            this.BG1VOFS = 0; // $210E
+            this.BG2HOFS = 0; // $210F
+            this.BG2VOFS = 0; // $2110
+            this.BG3HOFS = 0; // $2111
+            this.BG3VOFS = 0; // $2112
+            this.BG4HOFS = 0; // $2113
+            this.BG4VOFS = 0; // $2114
+            this.VMAIN = 0; // $2115
+            this.VMADDL = 0; // $2116
+            this.VMADDH = 0; // $2117
+            this.VMDATAL = 0; // $2118
+            this.VMDATAH = 0; // $2119
+            this.M7SEL = 0; // $211A
+            this.M7A = 0; // $211B
+            this.M7B = 0; // $211C
+            this.M7C = 0; // $211D
+            this.M7D = 0; // $211E
+            this.M7X = 0; // $211F
+            this.M7Y = 0; // $2120
+            this.CGADD = 0; // $2121
+            this.CGDATA = 0; // $2122
+            this.W12SEL = 0; // $2123
+            this.W34SEL = 0; // $2124
+            this.WOBJSEL = 0; // $2125
+            this.WH0 = 0; // $2126
+            this.WH1 = 0; // $2127
+            this.WH2 = 0; // $2128
+            this.WH3 = 0; // $2129
+            this.WBGLOG = 0; // $212A
+            this.WOBJLOG = 0; // $212B
+            this.TM = 0; // $212C
+            this.TS = 0; // $212D
+            this.TMW = 0; // $212E
+            this.TSW = 0; // $212F
+            this.CGWSEL = 0; // $2130
+            this.CGADSUB = 0; // $2131
+            this.COLDATA = 0; // $2132
+            this.SETINI = 0; // $2133
+            this.MPYL = 0; // $2134
+            this.MPYM = 0; // $2135
+            this.MPYH = 0; // $2136
+            this.SLHV = 0; // $2137
+            this.OAMDATAREAD = 0; // $2138
+            this.VMDATALREAD = 0; // $2139
+            this.VMDATAHREAD = 0; // $213A
+            this.CGDATAREAD = 0; // $213B
+            this.OPHCT = 0; // $213C
+            this.OPVCT = 0; // $213D
+            this.STAT77 = 0; // $213E
+            this.STAT78 = 0; // $213F
+            this.APUIO0 = 0; // $2140
+            this.APUIO1 = 0; // $2141
+            this.APUIO2 = 0; // $2142
+            this.APUIO3 = 0; // $2143
+            this.WMDATA = 0; // $2180
+            this.WMADDL = 0; // $2181
+            this.WMADDM = 0; // $2182
+            this.WMADDH = 0; // $2183
             this.stepMultiplication = 0;
         }
         StartMultiplication() {
@@ -2859,18 +2976,18 @@ var Emulator;
     Emulator.PpuRegister = PpuRegister;
     class DmaChannel {
         constructor() {
-            this.DMAPn = 0;
-            this.BBADn = 0;
-            this.A1TnL = 0;
-            this.A1TnH = 0;
-            this.A1Bn = 0;
-            this.DASnL = 0;
-            this.DASnH = 0;
-            this.DASBn = 0;
-            this.A2AnL = 0;
-            this.A2AnH = 0;
-            this.NLTRn = 0;
-            this.UNUSEDn = 0;
+            this.DMAPn = 0; // $43n0
+            this.BBADn = 0; // $43n1
+            this.A1TnL = 0; // $43n2
+            this.A1TnH = 0; // $43n3
+            this.A1Bn = 0; // $43n4
+            this.DASnL = 0; // $43n5
+            this.DASnH = 0; // $43n6
+            this.DASBn = 0; // $43n7
+            this.A2AnL = 0; // $43n8
+            this.A2AnH = 0; // $43n9
+            this.NLTRn = 0; // $43nA
+            this.UNUSEDn = 0; // $43nB / $43nF
         }
         ReadRegister(registerNumber) {
             switch (registerNumber) {
@@ -3063,20 +3180,25 @@ var Emulator;
         1 + 2,
         1 + 1,
         1 + 1,
-        1 + 2,
+        1 + 2, // Instruction.BlockMove
     ];
     Emulator.InstructionTable = {
+        //     Mnemonic  imp         S           #immM       dp          dp,Y        (dp,X)      [dp]        abs         abs,X       (abs)       [abs]       long,X      rlong       (sr,S),Y  	           Flags
+        //                     A           #imm8       #immX       dp,X        (dp)        (dp),Y      [dp],Y      absJ        abs,Y       (abs,X)     long        rel         sr,S        xyc
         'ADC': [null, null, null, null, 0x69, null, 0x65, 0x75, null, 0x72, 0x61, 0x71, 0x67, 0x77, 0x6D, null, 0x7D, 0x79, null, null, null, 0x6F, 0x7F, null, null, 0x63, 0x73, null],
         'AND': [null, null, null, null, 0x29, null, 0x25, 0x35, null, 0x32, 0x21, 0x31, 0x27, 0x37, 0x2D, null, 0x3D, 0x39, null, null, null, 0x2F, 0x3F, null, null, 0x23, 0x33, null],
         'ASL': [null, 0x0A, null, null, null, null, 0x06, 0x16, null, null, null, null, null, null, 0x0E, null, 0x1E, null, null, null, null, null, null, null, null, null, null, null],
         'BCC': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null],
         'BCS': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null],
         'BEQ': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xF0, null, null, null, null],
+        //	'BGE': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xB0, null, null, null, null ],	// --------
         'BIT': [null, null, null, null, 0x89, null, 0x24, 0x34, null, null, null, null, null, null, 0x2C, null, 0x3C, null, null, null, null, null, null, null, null, null, null, null],
+        //	'BLT': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x90, null, null, null, null ],	// --------
         'BMI': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x30, null, null, null, null],
         'BNE': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xD0, null, null, null, null],
         'BPL': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x10, null, null, null, null],
         'BRA': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x80, null, null, null, null],
+        //	'BRK': [ null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
         'BRK': [null, null, null, 0x00, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'BRL': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x82, null, null, null],
         'BVC': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x50, null, null, null, null],
@@ -3085,20 +3207,26 @@ var Emulator;
         'CLD': [0xD8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'CLI': [0x58, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'CLV': [0xB8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        //	'CMA': [ null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, null, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null ],	// N-----ZC
         'CMP': [null, null, null, null, 0xC9, null, 0xC5, 0xD5, null, 0xD2, 0xC1, 0xD1, 0xC7, 0xD7, 0xCD, null, 0xDD, 0xD9, null, null, null, 0xCF, 0xDF, null, null, 0xC3, 0xD3, null],
+        //	'COP': [ null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// ----DI--
         'COP': [null, null, null, 0x02, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'CPX': [null, null, null, null, null, 0xE0, 0xE4, null, null, null, null, null, null, null, 0xEC, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'CPY': [null, null, null, null, null, 0xC0, 0xC4, null, null, null, null, null, null, null, 0xCC, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        //	'DEA': [ null, 0x3A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
         'DEC': [null, 0x3A, null, null, null, null, 0xC6, 0xD6, null, null, null, null, null, null, 0xCE, null, 0xDE, null, null, null, null, null, null, null, null, null, null, null],
         'DEX': [0xCA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'DEY': [0x88, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'EOR': [null, null, null, null, 0x49, null, 0x45, 0x55, null, 0x52, 0x41, 0x51, 0x47, 0x57, 0x4D, null, 0x5D, 0x59, null, null, null, 0x4F, 0x5F, null, null, 0x43, 0x53, null],
+        //	'INA': [ null, 0x1A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
         'INC': [null, 0x1A, null, null, null, null, 0xE6, 0xF6, null, null, null, null, null, null, 0xEE, null, 0xFE, null, null, null, null, null, null, null, null, null, null, null],
         'INX': [0xE8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'INY': [0xC8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'JML': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0xDC, 0x5C, null, null, null, null, null, null],
+        //	'JMP': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, null, 0x6C, 0x7C, 0xDC, 0x5C, null, null, null, null, null, null ],	// --------
         'JMP': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x4C, null, null, null, 0x6C, 0x7C, null, null, null, null, null, null, null, null],
         'JSL': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x22, null, null, null, null, null, null],
+        //	'JSR': [ null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, null, 0xFC, null, 0x22, null, null, null, null, null, null ],	// --------
         'JSR': [null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0x20, null, null, null, null, 0xFC, null, null, null, null, null, null, null, null],
         'LDA': [null, null, null, null, 0xA9, null, 0xA5, 0xB5, null, 0xB2, 0xA1, 0xB1, 0xA7, 0xB7, 0xAD, null, 0xBD, 0xB9, null, null, null, 0xAF, 0xBF, null, null, 0xA3, 0xB3, null],
         'LDX': [null, null, null, null, null, 0xA2, 0xA6, null, 0xB6, null, null, null, null, null, 0xAE, null, null, 0xBE, null, null, null, null, null, null, null, null, null, null],
@@ -3140,13 +3268,18 @@ var Emulator;
         'STX': [null, null, null, null, null, null, 0x86, null, 0x96, null, null, null, null, null, 0x8E, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'STY': [null, null, null, null, null, null, 0x84, 0x94, null, null, null, null, null, null, 0x8C, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'STZ': [null, null, null, null, null, null, 0x64, 0x74, null, null, null, null, null, null, 0x9C, null, 0x9E, null, null, null, null, null, null, null, null, null, null, null],
+        //	'SWA': [ 0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+        //	'TAD': [ 0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
+        //	'TAS': [ 0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// --------
         'TAX': [0xAA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TAY': [0xA8, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TCD': [0x5B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TCS': [0x1B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        //	'TDA': [ 0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
         'TDC': [0x7B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TRB': [null, null, null, null, null, null, 0x14, null, null, null, null, null, null, null, 0x1C, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TSB': [null, null, null, null, null, null, 0x04, null, null, null, null, null, null, null, 0x0C, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        //	'TSA': [ 0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null ],	// N-----Z-
         'TSC': [0x3B, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TSX': [0xBA, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'TXA': [0x8A, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
@@ -3157,7 +3290,7 @@ var Emulator;
         'WAI': [0xCB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'WDM': [null, null, null, 0x42, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
         'XBA': [0xEB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
-        'XCE': [0xFB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        'XCE': [0xFB, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], // -------C (C=E, E=C)
     };
     function GetInstructionLength(addressing, flagM, flagX) {
         let additionalLength = 0;
@@ -3174,7 +3307,7 @@ var Emulator;
     Emulator.GetInstructionLength = GetInstructionLength;
     class StepLog {
         constructor() {
-            this.Instruction = Instruction.NOP;
+            this.Instruction = Instruction.NOP; // Initial: NOP ($EA)
             this.Addressing = Addressing.Implied;
             this.Opcode = Emulator.InstructionTable[Emulator.Instruction[this.Instruction]][this.Addressing];
             this.Operand1 = 0;
@@ -3240,7 +3373,7 @@ var Emulator;
                 `$${strRelDst} @ ${strOprRel}`,
                 `$${strOpr1B}, S @ ${strLngAccess}`,
                 `($${strOpr1B}, S), Y @ ${strIndAccess}`,
-                `$${strOpr2B}, $${strOpr1B} @ ${strXycDst} <- ${strXycSrc} => ${strEffValB}`,
+                `$${strOpr2B}, $${strOpr1B} @ ${strXycDst} <- ${strXycSrc} => ${strEffValB}`, // xyc	; src, dst
             ][this.Addressing];
         }
         GetExecuteMasterCycle() {
@@ -3283,6 +3416,8 @@ var Emulator;
     (function (RomMapping) {
         RomMapping[RomMapping["LoROM"] = 0] = "LoROM";
         RomMapping[RomMapping["HiROM"] = 1] = "HiROM";
+        // ExLoROM,
+        // ExHiROM,
     })(RomMapping = Emulator.RomMapping || (Emulator.RomMapping = {}));
     let AccessRegion;
     (function (AccessRegion) {
@@ -3312,6 +3447,7 @@ var Emulator;
         InterruptType[InterruptType["EmulationIRQ"] = 65534] = "EmulationIRQ";
     })(InterruptType || (InterruptType = {}));
 })(Emulator || (Emulator = {}));
+//--------------------------------------------------
 var Assembler;
 (function (Assembler_1) {
     class Assembler {
@@ -3325,7 +3461,9 @@ var Assembler;
             this.NowScopeName = '';
             this.NowAddress = 0;
             this.NowDirectPage = 0;
+            /** true = 8 bit / false = 16 bit */
             this.NowMemoryLength = true;
+            /** true = 8 bit / false = 16 bit */
             this.NowIndexLength = true;
             this.ErrorMessages = [];
             this.StartAddress = 0x008000;
@@ -3362,18 +3500,21 @@ var Assembler;
                     lex.DumpErrors(consoleErrorLog);
                 }
             };
+            // Pass1: split to tokens
             passStart(1);
             if (!lex.SplitTokens(code)) {
                 dumpError();
                 return [null, lex.ErrorMessages];
             }
             passFinish();
+            // Pass2: confirm the addresses
             passStart(2);
             if (!lex.ConfirmAddress()) {
                 dumpError();
                 return [null, lex.ErrorMessages];
             }
             passFinish();
+            // Pass3: generate binary
             passStart(3);
             if (!lex.GenerateBinary()) {
                 dumpError();
@@ -3411,6 +3552,7 @@ var Assembler;
             };
             for (lineNumber = 0; lineNumber < lines.length; lineNumber++) {
                 let line = lines[lineNumber];
+                // normalize
                 const normalizedLine = Assembler.NormalizeString(line);
                 if (normalizedLine === null) {
                     pushError('Encountered an unclosed string.');
@@ -3419,22 +3561,27 @@ var Assembler;
                 let remain = normalizedLine;
                 while (remain.length > 0) {
                     let checkRemain = null;
+                    // check directive
                     if ((checkRemain = this.CheckDirective(remain, pushToken, pushError)) !== null) {
                         remain = checkRemain.trim();
                         continue;
                     }
+                    // check label
                     if ((checkRemain = this.CheckLabel(remain, pushToken, pushError)) !== null) {
                         remain = checkRemain.trim();
                         continue;
                     }
+                    // check instruction
                     if ((checkRemain = this.CheckInstruction(remain, pushToken, pushError)) !== null) {
                         remain = checkRemain.trim();
                         continue;
                     }
+                    // check define
                     if ((checkRemain = this.CheckDefine(remain, pushToken, pushError)) !== null) {
                         remain = checkRemain.trim();
                         continue;
                     }
+                    // unknown
                     pushError('Detected unknown token.');
                     break;
                 }
@@ -3503,10 +3650,13 @@ var Assembler;
         CheckLabel(line, pushToken, pushError) {
             const [word, remain] = Assembler.SplitOnce(line);
             const match = line.match(/^([^\s]+):\s*(.*)/);
+            // skip local define
             if (line.match(/^.[^\s=,]+\s*=/)) {
+                // local define
                 return null;
             }
             if (match) {
+                // global label
                 const globalLabel = match[1];
                 const remain = match[2];
                 if (globalLabel.match(/[\+\-*/%<>\|\^#$\.]/)) {
@@ -3524,6 +3674,7 @@ var Assembler;
                 return remain;
             }
             else if (word[0] === '.') {
+                // local label
                 const localLabel = word;
                 if (localLabel.match(/[\+\-*/%<>\|\^#$]/)) {
                     pushError(`Invalid label name. "${localLabel}"`);
@@ -3547,10 +3698,12 @@ var Assembler;
                 return remain;
             }
             else if (word === '+') {
+                // plus label
                 pushToken(CodeTokenType.LabelPlus, []);
                 return remain;
             }
             else if (word === '-') {
+                // minus label
                 pushToken(CodeTokenType.LabelMinus, []);
                 return remain;
             }
@@ -3563,7 +3716,7 @@ var Assembler;
                 return null;
             }
             const instructionName = instructionMatch[1].toUpperCase();
-            const instructionLength = ((_a = instructionMatch[3]) !== null && _a !== void 0 ? _a : '').toLowerCase();
+            const instructionLength = ((_a = instructionMatch[3]) !== null && _a !== void 0 ? _a : '').toLowerCase(); // no point
             let remain = instructionMatch[4];
             const instruction = Assembler.StringToInstruction(instructionName);
             if (instruction === null) {
@@ -3676,41 +3829,41 @@ var Assembler;
                 token = this.Tokens[i];
                 token.Address = this.NowAddress;
                 switch (token.TokenType) {
-                    case CodeTokenType.DirectiveOrigin: {
+                    case CodeTokenType.DirectiveOrigin: { // ".org"
                         const value = resolve(token.Options[0]);
                         if (value === null) {
                             break;
                         }
                         this.NowAddress = value;
-                        token.Address = value;
+                        token.Address = value; // overwrite
                         token.Options[0] = value;
                         break;
                     }
-                    case CodeTokenType.DirectiveDataByte:
+                    case CodeTokenType.DirectiveDataByte: // ".db"
                         this.NowAddress += this.GetDataBytes(token, 1, false, pushError).length;
                         break;
-                    case CodeTokenType.DirectiveDataWord:
+                    case CodeTokenType.DirectiveDataWord: // ".dw"
                         this.NowAddress += this.GetDataBytes(token, 2, false, pushError).length;
                         break;
-                    case CodeTokenType.DirectiveDataLong:
+                    case CodeTokenType.DirectiveDataLong: // ".dl"
                         this.NowAddress += this.GetDataBytes(token, 3, false, pushError).length;
                         break;
-                    case CodeTokenType.DirectiveDataDouble:
+                    case CodeTokenType.DirectiveDataDouble: // ".dd"
                         this.NowAddress += this.GetDataBytes(token, 4, false, pushError).length;
                         break;
-                    case CodeTokenType.DirectiveMemoryShort:
+                    case CodeTokenType.DirectiveMemoryShort: // ".m8"
                         this.NowMemoryLength = true;
                         break;
-                    case CodeTokenType.DirectiveMemoryLong:
+                    case CodeTokenType.DirectiveMemoryLong: // ".m16"
                         this.NowMemoryLength = false;
                         break;
-                    case CodeTokenType.DirectiveIndexShort:
+                    case CodeTokenType.DirectiveIndexShort: // ".i8"
                         this.NowIndexLength = true;
                         break;
-                    case CodeTokenType.DirectiveIndexLong:
+                    case CodeTokenType.DirectiveIndexLong: // ".i16"
                         this.NowIndexLength = false;
                         break;
-                    case CodeTokenType.DirectiveDirectPointer: {
+                    case CodeTokenType.DirectiveDirectPointer: { // ".dp"
                         const value = resolve(token.Options[0]);
                         if (value === null) {
                             break;
@@ -3719,7 +3872,7 @@ var Assembler;
                         token.Options[0] = value;
                         break;
                     }
-                    case CodeTokenType.LabelGlobal: {
+                    case CodeTokenType.LabelGlobal: { // "Xxx:"
                         const name = token.Options[0];
                         if (typeof (name) !== 'string') {
                             pushTypeError();
@@ -3729,7 +3882,7 @@ var Assembler;
                         this.LabelList[name].Address = this.NowAddress;
                         break;
                     }
-                    case CodeTokenType.LabelLocal:
+                    case CodeTokenType.LabelLocal: // ".xxx"
                         const name = token.Options[0];
                         if (typeof (name) !== 'string') {
                             pushTypeError();
@@ -3737,13 +3890,13 @@ var Assembler;
                         }
                         this.LabelList[this.NowScopeName].LocalScope[name].Address = this.NowAddress;
                         break;
-                    case CodeTokenType.LabelPlus:
+                    case CodeTokenType.LabelPlus: // "+"
                         this.PlusLabelList.push(this.NowAddress);
                         break;
-                    case CodeTokenType.LabelMinus:
+                    case CodeTokenType.LabelMinus: // "-"
                         this.MinusLabelList.push(this.NowAddress);
                         break;
-                    case CodeTokenType.Instruction:
+                    case CodeTokenType.Instruction: // "LDA"
                         const instruction = token.Options[0];
                         if (!(instruction instanceof InstructionToken)) {
                             pushTypeError();
@@ -3755,11 +3908,13 @@ var Assembler;
                         }
                         this.NowAddress += length;
                         break;
-                    case CodeTokenType.Define:
-                    case CodeTokenType.DefineLocal:
+                    case CodeTokenType.Define: // "Xxx=YY"
+                    case CodeTokenType.DefineLocal: // ".Xxx=YY"
+                        // NOP
                         break;
                 }
             }
+            // NOTE: refer to the label of the nearest address instead of the line number.
             this.PlusLabelList.sort();
             this.MinusLabelList.sort();
             return this.ErrorMessages.length <= 0;
@@ -3768,26 +3923,29 @@ var Assembler;
             let flagM = this.NowMemoryLength;
             let flagX = this.NowIndexLength;
             let valid = true;
+            // Determine instruction addressing
             switch (instruction.Addressing) {
-                case Emulator.Addressing.Implied:
-                case Emulator.Addressing.Accumulator:
-                case Emulator.Addressing.Stack:
-                case Emulator.Addressing.Immediate8:
-                case Emulator.Addressing.DirectpageIndirect:
-                case Emulator.Addressing.DirectpageIndexedIndirectX:
-                case Emulator.Addressing.DirectpageIndirectIndexedY:
-                case Emulator.Addressing.DirectpageIndirectLong:
-                case Emulator.Addressing.DirectpageIndirectLongIndexedY:
-                case Emulator.Addressing.AbsoluteIndirect:
-                case Emulator.Addressing.AbsoluteIndexedIndirect:
-                case Emulator.Addressing.AbsoluteIndirectLong:
-                case Emulator.Addressing.Relative:
-                case Emulator.Addressing.RelativeLong:
-                case Emulator.Addressing.StackRelative:
-                case Emulator.Addressing.StackRelativeIndirectIndexedY:
-                case Emulator.Addressing.BlockMove:
+                case Emulator.Addressing.Implied: // imp
+                case Emulator.Addressing.Accumulator: // A
+                case Emulator.Addressing.Stack: // S
+                case Emulator.Addressing.Immediate8: // #imm8
+                case Emulator.Addressing.DirectpageIndirect: // (dp)
+                case Emulator.Addressing.DirectpageIndexedIndirectX: // (dp,X)
+                case Emulator.Addressing.DirectpageIndirectIndexedY: // (dp),Y
+                case Emulator.Addressing.DirectpageIndirectLong: // [dp]
+                case Emulator.Addressing.DirectpageIndirectLongIndexedY: // [dp],Y
+                case Emulator.Addressing.AbsoluteIndirect: // (abs)
+                case Emulator.Addressing.AbsoluteIndexedIndirect: // (abs,X)
+                case Emulator.Addressing.AbsoluteIndirectLong: // [abs]
+                case Emulator.Addressing.Relative: // rel
+                case Emulator.Addressing.RelativeLong: // rlong
+                case Emulator.Addressing.StackRelative: // sr,S
+                case Emulator.Addressing.StackRelativeIndirectIndexedY: // (sr,S),Y
+                case Emulator.Addressing.BlockMove: // xyc
+                    // NOP
+                    // `(abs)`, `(abs, X)`, `[abs]` is only used in JMP
                     break;
-                case Emulator.Addressing.ImmediateMemory:
+                case Emulator.Addressing.ImmediateMemory: // #immM
                     switch (instruction.AddressingLength) {
                         case AddressingLength.Byte:
                             flagM = true;
@@ -3799,7 +3957,7 @@ var Assembler;
                             return -1;
                     }
                     break;
-                case Emulator.Addressing.ImmediateIndex:
+                case Emulator.Addressing.ImmediateIndex: // #immX
                     switch (instruction.AddressingLength) {
                         case AddressingLength.Byte:
                             flagX = true;
@@ -3811,19 +3969,19 @@ var Assembler;
                             return -1;
                     }
                     break;
-                case Emulator.Addressing.Directpage:
-                case Emulator.Addressing.Absolute:
-                case Emulator.Addressing.AbsoluteJump:
-                case Emulator.Addressing.AbsoluteLong:
+                case Emulator.Addressing.Directpage: // dp
+                case Emulator.Addressing.Absolute: // abs
+                case Emulator.Addressing.AbsoluteJump: // absJ
+                case Emulator.Addressing.AbsoluteLong: // long
                     valid = this.DetermineInstructionAddressing(instruction, Emulator.Addressing.Directpage, Emulator.Addressing.Absolute, Emulator.Addressing.AbsoluteLong);
                     break;
-                case Emulator.Addressing.DirectpageIndexedX:
-                case Emulator.Addressing.AbsoluteIndexedX:
-                case Emulator.Addressing.AbsoluteLongIndexedX:
+                case Emulator.Addressing.DirectpageIndexedX: // dp,X
+                case Emulator.Addressing.AbsoluteIndexedX: // abs,X
+                case Emulator.Addressing.AbsoluteLongIndexedX: // long,X
                     valid = this.DetermineInstructionAddressing(instruction, Emulator.Addressing.DirectpageIndexedX, Emulator.Addressing.AbsoluteIndexedX, Emulator.Addressing.AbsoluteLongIndexedX);
                     break;
-                case Emulator.Addressing.DirectpageIndexedY:
-                case Emulator.Addressing.AbsoluteIndexedY:
+                case Emulator.Addressing.DirectpageIndexedY: // dp,Y
+                case Emulator.Addressing.AbsoluteIndexedY: // abs,Y
                     valid = this.DetermineInstructionAddressing(instruction, Emulator.Addressing.DirectpageIndexedY, Emulator.Addressing.AbsoluteIndexedY, null);
                     break;
             }
@@ -3835,21 +3993,25 @@ var Assembler;
         DetermineInstructionAddressing(instruction, addressingDp, addressingAbs, addressingLong) {
             const instructionTableEntry = Emulator.InstructionTable[Emulator.Instruction[instruction.Instruction]];
             let useAddressing = addressingAbs;
+            // for JML, JSL
             if ((addressingLong !== null) &&
                 ((instructionTableEntry[addressingDp] === null) && (instructionTableEntry[addressingAbs] === null) && (instructionTableEntry[addressingLong] !== null))) {
                 instruction.AddressingLength = AddressingLength.Long;
             }
             switch (instruction.AddressingLength) {
                 case AddressingLength.None: {
+                    // get target address
                     const [target, message] = this.ResolveValue(instruction.Operand1);
                     if (target === null) {
                         break;
                     }
+                    // long
                     const availableLong = (addressingLong !== null) && (instructionTableEntry[addressingLong] !== null);
                     if (availableLong && ((this.NowAddress & 0xFF0000) != (target & 0xFF0000))) {
                         useAddressing = addressingLong;
                         break;
                     }
+                    // dp
                     const availableDp = (instructionTableEntry[addressingDp] !== null);
                     if (availableDp && (Utility.Math.IsRange((target & 0x00FFFF) - this.NowDirectPage, 0, 0x100))) {
                         useAddressing = addressingDp;
@@ -3870,6 +4032,7 @@ var Assembler;
                     useAddressing = addressingLong;
                     break;
             }
+            // check if instruction exists
             if (instructionTableEntry[useAddressing] !== null) {
                 instruction.Addressing = useAddressing;
                 return true;
@@ -3910,7 +4073,8 @@ var Assembler;
                 this.NowAddress = token.Address;
                 const beforeChunkLength = chunk.Data.length;
                 switch (token.TokenType) {
-                    case CodeTokenType.DirectiveOrigin: {
+                    case CodeTokenType.DirectiveOrigin: { // ".org"
+                        // push chunk
                         if (chunk.Data.length > 0) {
                             this.Chunks.push(chunk);
                         }
@@ -3918,39 +4082,39 @@ var Assembler;
                         chunk.Address = token.Address;
                         break;
                     }
-                    case CodeTokenType.DirectiveDataByte: {
+                    case CodeTokenType.DirectiveDataByte: { // ".db"
                         const data = this.GetDataBytes(token, 1, true, pushError);
                         chunk.Data = chunk.Data.concat(data);
                         break;
                     }
-                    case CodeTokenType.DirectiveDataWord: {
+                    case CodeTokenType.DirectiveDataWord: { // ".dw"
                         const data = this.GetDataBytes(token, 2, true, pushError);
                         chunk.Data = chunk.Data.concat(data);
                         break;
                     }
-                    case CodeTokenType.DirectiveDataLong: {
+                    case CodeTokenType.DirectiveDataLong: { // ".dl"
                         const data = this.GetDataBytes(token, 3, true, pushError);
                         chunk.Data = chunk.Data.concat(data);
                         break;
                     }
-                    case CodeTokenType.DirectiveDataDouble: {
+                    case CodeTokenType.DirectiveDataDouble: { // ".dd"
                         const data = this.GetDataBytes(token, 4, true, pushError);
                         chunk.Data = chunk.Data.concat(data);
                         break;
                     }
-                    case CodeTokenType.DirectiveMemoryShort:
+                    case CodeTokenType.DirectiveMemoryShort: // ".m8"
                         this.NowMemoryLength = true;
                         break;
-                    case CodeTokenType.DirectiveMemoryLong:
+                    case CodeTokenType.DirectiveMemoryLong: // ".m16"
                         this.NowMemoryLength = false;
                         break;
-                    case CodeTokenType.DirectiveIndexShort:
+                    case CodeTokenType.DirectiveIndexShort: // ".i8"
                         this.NowIndexLength = true;
                         break;
-                    case CodeTokenType.DirectiveIndexLong:
+                    case CodeTokenType.DirectiveIndexLong: // ".i16"
                         this.NowIndexLength = false;
                         break;
-                    case CodeTokenType.DirectiveDirectPointer: {
+                    case CodeTokenType.DirectiveDirectPointer: { // ".dp"
                         const value = resolve(token.Options[0]);
                         if (value === null) {
                             break;
@@ -3958,7 +4122,7 @@ var Assembler;
                         this.NowDirectPage = value;
                         break;
                     }
-                    case CodeTokenType.LabelGlobal: {
+                    case CodeTokenType.LabelGlobal: { // "Xxx:"
                         const name = token.Options[0];
                         if (typeof (name) !== 'string') {
                             pushTypeError();
@@ -3967,11 +4131,12 @@ var Assembler;
                         this.NowScopeName = name;
                         break;
                     }
-                    case CodeTokenType.LabelLocal:
-                    case CodeTokenType.LabelPlus:
-                    case CodeTokenType.LabelMinus:
+                    case CodeTokenType.LabelLocal: // ".xxx"
+                    case CodeTokenType.LabelPlus: // "+"
+                    case CodeTokenType.LabelMinus: // "-"
+                        // NOP
                         break;
-                    case CodeTokenType.Instruction:
+                    case CodeTokenType.Instruction: // "LDA"
                         const instruction = token.Options[0];
                         if (!(instruction instanceof InstructionToken)) {
                             pushTypeError();
@@ -3979,8 +4144,9 @@ var Assembler;
                         }
                         this.PushInstructionBinary(chunk, instruction, pushError);
                         break;
-                    case CodeTokenType.Define:
-                    case CodeTokenType.DefineLocal:
+                    case CodeTokenType.Define: // "Xxx=YY"
+                    case CodeTokenType.DefineLocal: // ".Xxx=YY"
+                        // NOP
                         break;
                 }
                 const addChunkLength = chunk.Data.length - beforeChunkLength;
@@ -3988,6 +4154,7 @@ var Assembler;
                     chunk.Source.push(token.SourceInformation);
                 }
             }
+            // push chunk
             if (chunk.Data.length > 0) {
                 this.Chunks.push(chunk);
             }
@@ -4021,15 +4188,16 @@ var Assembler;
             };
             pushByte(instructionByte);
             switch (instruction.Addressing) {
-                case Emulator.Addressing.Implied:
-                case Emulator.Addressing.Accumulator:
-                case Emulator.Addressing.Stack:
+                case Emulator.Addressing.Implied: // imp
+                case Emulator.Addressing.Accumulator: // A
+                case Emulator.Addressing.Stack: // S
                     {
+                        // NOP
                         break;
                     }
-                case Emulator.Addressing.Immediate8:
-                case Emulator.Addressing.StackRelative:
-                case Emulator.Addressing.StackRelativeIndirectIndexedY:
+                case Emulator.Addressing.Immediate8: // #imm8
+                case Emulator.Addressing.StackRelative: // sr,S
+                case Emulator.Addressing.StackRelativeIndirectIndexedY: // (sr,S),Y
                     {
                         const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                         if (operand1 === null) {
@@ -4039,14 +4207,14 @@ var Assembler;
                         pushByte(operand1);
                         break;
                     }
-                case Emulator.Addressing.Directpage:
-                case Emulator.Addressing.DirectpageIndexedX:
-                case Emulator.Addressing.DirectpageIndexedY:
-                case Emulator.Addressing.DirectpageIndirect:
-                case Emulator.Addressing.DirectpageIndexedIndirectX:
-                case Emulator.Addressing.DirectpageIndirectIndexedY:
-                case Emulator.Addressing.DirectpageIndirectLong:
-                case Emulator.Addressing.DirectpageIndirectLongIndexedY:
+                case Emulator.Addressing.Directpage: // dp
+                case Emulator.Addressing.DirectpageIndexedX: // dp,X
+                case Emulator.Addressing.DirectpageIndexedY: // dp,Y
+                case Emulator.Addressing.DirectpageIndirect: // (dp)
+                case Emulator.Addressing.DirectpageIndexedIndirectX: // (dp,X)
+                case Emulator.Addressing.DirectpageIndirectIndexedY: // (dp),Y
+                case Emulator.Addressing.DirectpageIndirectLong: // [dp]
+                case Emulator.Addressing.DirectpageIndirectLongIndexedY: // [dp],Y
                     {
                         const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                         if (operand1 === null) {
@@ -4063,7 +4231,7 @@ var Assembler;
                         }
                         break;
                     }
-                case Emulator.Addressing.ImmediateMemory: {
+                case Emulator.Addressing.ImmediateMemory: { // #immM
                     const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                     if (operand1 === null) {
                         pushError('Failed to resolve operand. ' + message1);
@@ -4079,7 +4247,7 @@ var Assembler;
                     }
                     break;
                 }
-                case Emulator.Addressing.ImmediateIndex: {
+                case Emulator.Addressing.ImmediateIndex: { // #immX
                     const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                     if (operand1 === null) {
                         pushError('Failed to resolve operand. ' + message1);
@@ -4095,13 +4263,13 @@ var Assembler;
                     }
                     break;
                 }
-                case Emulator.Addressing.Absolute:
-                case Emulator.Addressing.AbsoluteJump:
-                case Emulator.Addressing.AbsoluteIndexedX:
-                case Emulator.Addressing.AbsoluteIndexedY:
-                case Emulator.Addressing.AbsoluteIndirect:
-                case Emulator.Addressing.AbsoluteIndexedIndirect:
-                case Emulator.Addressing.AbsoluteIndirectLong:
+                case Emulator.Addressing.Absolute: // abs
+                case Emulator.Addressing.AbsoluteJump: // absJ
+                case Emulator.Addressing.AbsoluteIndexedX: // abs,X
+                case Emulator.Addressing.AbsoluteIndexedY: // abs,Y
+                case Emulator.Addressing.AbsoluteIndirect: // (abs)
+                case Emulator.Addressing.AbsoluteIndexedIndirect: // (abs,X)
+                case Emulator.Addressing.AbsoluteIndirectLong: // [abs]
                     {
                         const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                         if (operand1 === null) {
@@ -4111,8 +4279,8 @@ var Assembler;
                         pushWord(operand1);
                         break;
                     }
-                case Emulator.Addressing.AbsoluteLong:
-                case Emulator.Addressing.AbsoluteLongIndexedX:
+                case Emulator.Addressing.AbsoluteLong: // long
+                case Emulator.Addressing.AbsoluteLongIndexedX: // long,X
                     {
                         const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                         if (operand1 === null) {
@@ -4122,7 +4290,7 @@ var Assembler;
                         pushLong(operand1);
                         break;
                     }
-                case Emulator.Addressing.Relative: {
+                case Emulator.Addressing.Relative: { // rel
                     const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                     if (operand1 === null) {
                         pushError('Failed to resolve operand. ' + message1);
@@ -4139,7 +4307,7 @@ var Assembler;
                     }
                     break;
                 }
-                case Emulator.Addressing.RelativeLong: {
+                case Emulator.Addressing.RelativeLong: { // rlong
                     const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                     if (operand1 === null) {
                         pushError('Failed to resolve operand. ' + message1);
@@ -4156,7 +4324,7 @@ var Assembler;
                     }
                     break;
                 }
-                case Emulator.Addressing.BlockMove: {
+                case Emulator.Addressing.BlockMove: { // xyc
                     const [operand1, message1] = this.ResolveValue(instruction.Operand1);
                     const [operand2, message2] = this.ResolveValue(instruction.Operand2);
                     const operand1Failed = operand1 === null;
@@ -4183,16 +4351,19 @@ var Assembler;
                 sign = -1;
                 str = str.substring(1);
             }
+            // hex: `$xxx`
             match = str.match(/^\$([\dA-F]+)$/i);
             if (match) {
                 const c = match[1];
                 return parseInt(c, 16) * sign;
             }
+            // bin: `%xxxx_xxxx`
             match = str.match(/^%([01_]+)$/i);
             if (match) {
                 const c = match[1].replace('_', '');
                 return parseInt(c, 2);
             }
+            // dec: `xxx`
             match = str.match(/^(\d+)$/i);
             if (match) {
                 const c = match[1];
@@ -4201,13 +4372,16 @@ var Assembler;
             return null;
         }
         ResolveValue(name, depth = 1) {
+            // check number
             if (typeof (name) === 'number') {
                 return [name, ''];
             }
+            // check depth
             depth++;
             if (depth > 100) {
                 return [null, 'The definition is too deep.'];
             }
+            // define
             if (this.DefineList[name]) {
                 const valueString = this.DefineList[name].Value;
                 const [value, message] = this.ResolveValue(valueString, depth);
@@ -4218,6 +4392,7 @@ var Assembler;
                     return [null, message];
                 }
             }
+            // plus label
             if (name === '+') {
                 for (let i = 0; i < this.PlusLabelList.length; i++) {
                     if (this.NowAddress < this.PlusLabelList[i]) {
@@ -4226,6 +4401,7 @@ var Assembler;
                 }
                 return [null, 'Plus label resolution failed.'];
             }
+            // minus label
             if (name === '-') {
                 for (let i = this.MinusLabelList.length - 1; i >= 0; i--) {
                     if (this.MinusLabelList[i] <= this.NowAddress) {
@@ -4234,6 +4410,7 @@ var Assembler;
                 }
                 return [null, 'Minus label resolution failed.'];
             }
+            // expression
             const matchExpression = name.match(/^([^\s*/%<>&\|\^][^\s\+\-*/%<>&\|\^]*)\s*([\+\-*/%<>&\|\^]+)\s*(.*)$/);
             if (matchExpression) {
                 const leftString = matchExpression[1];
@@ -4253,6 +4430,7 @@ var Assembler;
                 }
                 return [operatorFunction(leftValue, rightValue), 'expression'];
             }
+            // local label or define
             if (name[0] === '.') {
                 const scope = this.LabelList[this.NowScopeName];
                 if (!scope) {
@@ -4279,6 +4457,7 @@ var Assembler;
                     }
                 }
             }
+            // global label
             if (this.LabelList[name]) {
                 const label = this.LabelList[name];
                 if (label.Address === InvalidAddress) {
@@ -4286,6 +4465,7 @@ var Assembler;
                 }
                 return [label.Address, 'global label'];
             }
+            // number
             {
                 const value = Assembler.DecodeValue(name);
                 if (value !== null) {
@@ -4310,6 +4490,7 @@ var Assembler;
                 }
                 else if (typeof (option) === 'string') {
                     if (option[0] === '"') {
+                        // string
                         for (let j = 1; j < (option.length - 1); j++) {
                             const char = option.codePointAt(j);
                             pushValue((char !== undefined) ? char : 0);
@@ -4329,11 +4510,15 @@ var Assembler;
             return data;
         }
         static NormalizeString(str) {
+            // remove comment
+            // remove contiguous space
+            // remove first and last space
             const reader = new Utility.CharacterReadStream(str);
             let output = '';
             while (!reader.ReadEnd()) {
                 const c = reader.Read();
                 if (c == null) {
+                    // invalid format
                     return null;
                 }
                 const prevChar = output[output.length - 1];
@@ -4344,18 +4529,22 @@ var Assembler;
                         continue;
                     }
                     else {
+                        // skip consecutive spaces
                         continue;
                     }
                 }
                 if (c == ';') {
+                    // comment
                     break;
                 }
                 if (c == '/') {
                     if (prevChar !== '/') {
+                        // accept once
                         output += c;
                         continue;
                     }
                     else {
+                        // slash comment, cancel last character
                         output = output.substring(0, output.length - 1);
                         break;
                     }
@@ -4428,6 +4617,7 @@ var Assembler;
             return errorStrings;
         }
         DumpTokens(print = console.log, newline = '\n') {
+            // for debug
             for (let i = 0; i < this.Tokens.length; i++) {
                 const t = this.Tokens[i];
                 let l = `[${i}] Line:${t.SourceInformation.Line} $${Utility.Format.ToHexString(t.Address, 6)} ${CodeTokenType[t.TokenType]}: #${t.Options.length} ${t.Options}`;
@@ -4438,6 +4628,7 @@ var Assembler;
             }
         }
         DumpChunks(print = console.log, newline = '\n', columns = 16) {
+            // for debug
             for (let i = 0; i < this.Chunks.length; i++) {
                 const chunk = this.Chunks[i];
                 let str = `[${i}] $${Utility.Format.ToHexString(chunk.Address, 6)} ${chunk.Data.length} byte(s)`;
@@ -4451,14 +4642,17 @@ var Assembler;
             }
         }
         DumpErrors(print = console.log) {
+            // for debug
             const errorStrings = Assembler.ConvertErrorStrings(this.ErrorMessages);
             for (let i = 0; i < errorStrings.length; i++) {
                 print(errorStrings[i]);
             }
         }
     }
+    /** true = Output log to console / false = Do not output log */
     Assembler.Verbose = false;
     Assembler.InstructionPatternList = [
+        //	Pattern								Addressing							Fallback
         { Pattern: `^(([Aa]))`, Addressing: Emulator.Addressing.Accumulator, Fallback: false },
         { Pattern: `^(#(.+))`, Addressing: Emulator.Addressing.Immediate8, Fallback: true },
         { Pattern: `^(#(.+))`, Addressing: Emulator.Addressing.ImmediateMemory, Fallback: true },
@@ -4484,7 +4678,7 @@ var Assembler;
         { Pattern: `^(([^,]+))`, Addressing: Emulator.Addressing.AbsoluteLong, Fallback: false },
         { Pattern: `^(())`, Addressing: Emulator.Addressing.Accumulator, Fallback: true },
         { Pattern: `^(())`, Addressing: Emulator.Addressing.Stack, Fallback: true },
-        { Pattern: `^(())`, Addressing: Emulator.Addressing.Implied, Fallback: false },
+        { Pattern: `^(())`, Addressing: Emulator.Addressing.Implied, Fallback: false }, // ""
     ];
     Assembler.OperatorFunctions = {
         '+': (a, b) => a + b,
@@ -4537,6 +4731,7 @@ var Assembler;
             this.Operand2 = Operand2;
         }
         ToString() {
+            // for Debug
             return `${Emulator.Instruction[this.Instruction]}`
                 + ` ${Emulator.Addressing[this.Addressing]} (${AddressingLength[this.AddressingLength]})`
                 + ` [${this.Operand1}, ${this.Operand2}]`;
@@ -4624,7 +4819,9 @@ var Assembler;
             };
             for (let c = 0; c < chunks.length; c++) {
                 const chunk = chunks[c];
+                // 24 bit address (bank)
                 pushData([0x02, 0x00, 0x00, 0x04, chunk.Address >> 24, chunk.Address >> 16]);
+                // data
                 let content = [0x00, chunk.Address >> 8, chunk.Address, 0x00];
                 for (let i = 0; i < chunk.Data.length; i++) {
                     if (content.length >= (16 + 4)) {
@@ -4637,11 +4834,13 @@ var Assembler;
                 if (content.length > 4) {
                     pushData(content);
                 }
+                // EOF
                 pushData([0x00, 0x00, 0x00, 0x01]);
             }
             return hexFile;
         }
         static ChunksToSRec(chunks) {
+            // S28 format
             const hexFile = [];
             const pushData = (data) => {
                 let checksum = Utility.Type.ToByte(data.length - 1);
@@ -4657,6 +4856,7 @@ var Assembler;
             };
             for (let c = 0; c < chunks.length; c++) {
                 const chunk = chunks[c];
+                // data
                 let content = [0x02, 0x00, chunk.Address >> 16, chunk.Address >> 8, chunk.Address];
                 for (let i = 0; i < chunk.Data.length; i++) {
                     if (content.length >= (16 + 5)) {
@@ -4669,6 +4869,7 @@ var Assembler;
                 if (content.length > 5) {
                     pushData(content);
                 }
+                // EOF
                 pushData([0x08, 0x00, 0x00, 0x00, 0x00]);
             }
             return hexFile;
@@ -4676,6 +4877,7 @@ var Assembler;
     }
     Assembler_1.HexFile = HexFile;
 })(Assembler || (Assembler = {}));
+//--------------------------------------------------
 var Application;
 (function (Application) {
     var _a;
@@ -4723,6 +4925,7 @@ var Application;
         static Assemble() {
             Main.Assembled = null;
             Main.ClearResultViewer();
+            // Setting from form
             const setting = Main.GetSetting();
             const source = setting.Source;
             if ((!source) || (source.length <= 0)) {
@@ -4746,6 +4949,7 @@ var Application;
         static Run() {
             const memory = new Emulator.Memory();
             Main.Memory = memory;
+            // Setting from form
             const setting = Main.GetSetting();
             memory.ROMMapping = setting.RomMapping;
             memory.IsFastROM = setting.FastRom;
@@ -5003,6 +5207,7 @@ var Application;
             return urlDecodedSource;
         }
         static DumpCpuLog(cpu) {
+            // for debug
             for (let i = 0; i < cpu.Logs.length; i++) {
                 const instructionLog = cpu.Logs[i];
                 console.log(`[${i}] ${instructionLog.GetLogString()}`);
@@ -5078,35 +5283,99 @@ var Application;
             Main.SetTextareaStrings(Main.Dom.ViewerTextLog_Log, logStrings);
         }
         static ClearResultViewer_TableLog() {
+            // TODO: Implements
         }
         static UpdateResultViewer_TableLog(cpu) {
+            // TODO: Implements
         }
         static ClearResultViewer_Timeline() {
+            // TODO: Implements
         }
         static UpdateResultViewer_Timeline(cpu) {
+            // TODO: Implements
         }
         static ClearResultViewer_Heatmap() {
+            Main.ClearTableBody('#ViewerHeatmap_Table', 5);
         }
         static UpdateResultViewer_Heatmap(cpu) {
+            const tableBody = document.querySelector('#ViewerHeatmap_Table tbody');
+            if (!tableBody) {
+                return;
+            }
+            // data helper
+            const heatmap = [];
+            function getEntry(stepLog) {
+                var _b, _c, _d, _e;
+                for (let i = 0; i < heatmap.length; i++) {
+                    if (stepLog.InstructionAddress === heatmap[i].Address) {
+                        return heatmap[i];
+                    }
+                }
+                let logString = stepLog.GetLogString();
+                logString = Utility.Format.RemoveAfter(logString, ';');
+                logString = Utility.Format.RemoveAfter(logString, '@').trim();
+                const entry = new Viewer_Heatmap_Log();
+                entry.Line = (_c = (_b = stepLog.Source) === null || _b === void 0 ? void 0 : _b.Line) !== null && _c !== void 0 ? _c : -1;
+                entry.Address = stepLog.InstructionAddress;
+                entry.Code = (_e = (_d = stepLog.Source) === null || _d === void 0 ? void 0 : _d.Source) !== null && _e !== void 0 ? _e : logString;
+                entry.Cycle = stepLog.GetExecuteMasterCycle();
+                entry.Rate = entry.Cycle / Main.Cpu.MasterCycleCounter;
+                heatmap.push(entry);
+                heatmap.sort(function (a, b) {
+                    const diffAddress = a.Address - b.Address;
+                    if (diffAddress !== 0) {
+                        return diffAddress;
+                    }
+                    return a.Line - b.Line;
+                });
+                return entry;
+            }
+            function updateEntry(stepLog) {
+                const entry = getEntry(stepLog);
+                entry.Cycle += stepLog.GetExecuteMasterCycle();
+                entry.Rate = entry.Cycle / Main.Cpu.MasterCycleCounter;
+            }
+            // create data
+            for (let s = 0; s < cpu.Logs.length; s++) {
+                const step = cpu.Logs[s];
+                updateEntry(step);
+            }
+            if (heatmap.length <= 0) {
+                return;
+            }
+            DomUtility.RemoveCildren(tableBody);
+            // add rows
+            function createRow(parent, className) {
+                const cell = document.createElement('td');
+                parent.appendChild(cell);
+                cell.classList.add(className);
+                return cell;
+            }
+            for (let i = 0; i < heatmap.length; i++) {
+                const history = heatmap[i];
+                const row = document.createElement('tr');
+                const cellLine = createRow(row, 'line');
+                const cellAddress = createRow(row, 'address');
+                const cellCode = createRow(row, 'code');
+                const cellCycle = createRow(row, 'cycle');
+                const cellRate = createRow(row, 'rate');
+                tableBody.appendChild(row);
+                row.setAttribute('style', `background-color: RGBA(${Main.HeatmapColor}, ${history.Rate * Main.HeatmapMaxIntensity});`);
+                if (history.Line >= 0) {
+                    cellLine.textContent = `${history.Line}`;
+                }
+                else {
+                    cellLine.textContent = '---';
+                    cellLine.setAttribute('style', 'text-align:center;'); // adding '.center' class has no effect
+                }
+                cellAddress.textContent = `$${Utility.Format.ToHexString(history.Address, 6)}`;
+                cellCode.textContent = history.Code;
+                cellCycle.textContent = `${history.Cycle}`;
+                cellRate.textContent = `${(history.Rate * 100).toFixed(1)} %`;
+            }
         }
         static ClearResultViewer_Written() {
-            const tableBody = document.querySelector('#ViewerWritten_Table tbody');
-            DomUtility.RemoveCildren(tableBody);
-            if (tableBody) {
-                const row = document.createElement('tr');
-                tableBody.appendChild(row);
-                function appendDummyChild() {
-                    const cell = document.createElement('td');
-                    cell.textContent = '---';
-                    cell.classList.add('center');
-                    row.appendChild(cell);
-                }
-                appendDummyChild();
-                appendDummyChild();
-                appendDummyChild();
-                appendDummyChild();
-                appendDummyChild();
-            }
+            Main.ClearTableBody('#ViewerWritten_Table', 5);
         }
         static UpdateResultViewer_Written(cpu) {
             var _b, _c;
@@ -5116,6 +5385,7 @@ var Application;
             }
             const writeAccess = [];
             const writeHistory = {};
+            // take out write access
             for (let s = 0; s < cpu.Logs.length; s++) {
                 const step = cpu.Logs[s];
                 let cycle = step.MasterCycle;
@@ -5148,6 +5418,7 @@ var Application;
             }
             DomUtility.RemoveCildren(tableBody);
             writeAccess.sort((a, b) => a.Address - b.Address);
+            // add rows
             function createRow(parent, className) {
                 const cell = document.createElement('td');
                 parent.appendChild(cell);
@@ -5189,6 +5460,23 @@ var Application;
                 }
             }
         }
+        static ClearTableBody(selector, rowCount) {
+            const tableBody = document.querySelector(selector + ' tbody');
+            DomUtility.RemoveCildren(tableBody);
+            if (tableBody) {
+                const row = document.createElement('tr');
+                tableBody.appendChild(row);
+                function appendDummyChild() {
+                    const cell = document.createElement('td');
+                    cell.textContent = '---';
+                    cell.classList.add('center');
+                    row.appendChild(cell);
+                }
+                for (let i = 0; i < rowCount; i++) {
+                    appendDummyChild();
+                }
+            }
+        }
     }
     _a = Main;
     Main.Assembled = null;
@@ -5215,6 +5503,8 @@ var Application;
         'ViewerHeatmap': Main.dummyNode,
         'ViewerWritten': Main.dummyNode,
     };
+    Main.HeatmapColor = '204, 0, 0'; // #CC0000
+    Main.HeatmapMaxIntensity = 0.50;
     Main.ClearResultViewerFunctions = [
         Main.ClearResultViewer_TextLog,
         Main.ClearResultViewer_TableLog,
@@ -5279,6 +5569,7 @@ var Application;
                 domEvent(dom);
             });
         }
+        // Allow tab input
         static AllowTab(element) {
             element.addEventListener('keydown', (e) => {
                 DomUtility.AllowTabEvent(element, e);
@@ -5334,6 +5625,7 @@ var Application;
             }
             return false;
         }
+        // Input in integer format
         static IntegerInput(element) {
             element.addEventListener('keydown', (e) => {
                 DomUtility.IntegerInputKeydownEvent(element, e);
@@ -5373,6 +5665,7 @@ var Application;
                 element.value = setValue;
             }
         }
+        // Input in hexadecimal format
         static HexadecimalInput(element) {
             element.addEventListener('keydown', (e) => {
                 DomUtility.HexadecimalInputKeydownEvent(element, e);
@@ -5422,6 +5715,15 @@ var Application;
         ViewerMode[ViewerMode["Heatmap"] = 3] = "Heatmap";
         ViewerMode[ViewerMode["Written"] = 4] = "Written";
     })(ViewerMode || (ViewerMode = {}));
+    class Viewer_Heatmap_Log {
+        constructor() {
+            this.Line = 0;
+            this.Address = 0;
+            this.Code = '';
+            this.Cycle = 0;
+            this.Rate = 0;
+        }
+    }
     class Viewer_Written_Log {
         constructor() {
             this.Region = Emulator.AccessRegion.MainRAM;
@@ -5433,3 +5735,4 @@ var Application;
         }
     }
 })(Application || (Application = {}));
+//# sourceMappingURL=main.js.map
