@@ -5572,6 +5572,13 @@ namespace Application{
 			setting.EmulationStopCOP	= Main.GetFormBoolean(getDom('stopc'));
 			setting.EmulationStopWDM	= Main.GetFormBoolean(getDom('stopr'));
 			setting.Source			= (Main.Dom.AssemblerSource as HTMLInputElement).value;
+			setting.ViewerMode		= DomUtility.GetFormRadio<ViewerMode>('#ViewerSelect', 'viewer', {
+				'textlog': ViewerMode.TextLog,
+				'tablelog': ViewerMode.TableLog,
+				'timeline': ViewerMode.Timeline,
+				'heatmap': ViewerMode.Heatmap,
+				'written': ViewerMode.Written,
+			}, ViewerMode.TextLog);
 
 			return setting;
 		}
@@ -5607,6 +5614,16 @@ namespace Application{
 			if(setting.Source.length > 0){
 				(Main.Dom.AssemblerSource as HTMLInputElement).value	= setting.Source;
 			}
+
+			DomUtility.SetFormRadio<ViewerMode>('#ViewerSelect', 'viewer', {
+				textlog:	ViewerMode.TextLog,
+				tablelog:	ViewerMode.TableLog,
+				timeline:	ViewerMode.Timeline,
+				heatmap:	ViewerMode.Heatmap,
+				written:	ViewerMode.Written,
+			}, setting.ViewerMode, 'textlog');
+
+			Main.UpdateSelectedViewer(setting.ViewerMode);
 		}
 		private static SetFormBoolean(dom: HTMLInputElement, value: boolean){
 			dom.checked	= value;
@@ -5662,9 +5679,9 @@ namespace Application{
 
 			for(const index in parameters){
 				const [key, value]	= split(parameters[index]);
-				switch(key){
+				switch(key.toLowerCase()){
 					case 'rm':{
-						switch(value){
+						switch(value.toLowerCase()){
 							case 'lo':
 								setting.RomMapping	= Emulator.RomMapping.LoROM;
 								break;
@@ -5701,6 +5718,19 @@ namespace Application{
 					case 'src':
 						setting.Source			= Main.DecodeSource(value);
 						break;
+					case 'vm':{
+						for(let mode in ViewerMode){
+							const enumIndex	= parseInt(mode);
+							if(isNaN(enumIndex)){
+								continue;
+							}
+							const enumValue: ViewerMode	= enumIndex;
+							if(value.toLocaleLowerCase() === ViewerMode[enumValue].toLowerCase()){
+								setting.ViewerMode	= enumValue;
+							}
+						}
+						break;
+					}
 				}
 			}
 
@@ -5725,6 +5755,7 @@ namespace Application{
 			url		+= `&esc=${ booleanToParameter(setting.EmulationStopCOP) }`;
 			url		+= `&esr=${ booleanToParameter(setting.EmulationStopWDM) }`;
 			url		+= `&src=${ Main.EncodeSource(setting.Source) }`;
+			//url		+= `&vm=${ ViewerMode[setting.ViewerMode] }`;
 
 			return url;
 		}
@@ -5750,14 +5781,19 @@ namespace Application{
 			}
 		}
 
-		private static UpdateSelectedViewer(){
-			const selected	= DomUtility.GetFormRadio<ViewerMode>('#ViewerSelect', 'viewer', {
-				textlog:	ViewerMode.TextLog,
-				tablelog:	ViewerMode.TableLog,
-				timeline:	ViewerMode.Timeline,
-				heatmap:	ViewerMode.Heatmap,
-				written:	ViewerMode.Written,
-			}, ViewerMode.TableLog);
+		private static UpdateSelectedViewer(selected: ViewerMode | null = null){
+			if(selected === null){
+				selected	= DomUtility.GetFormRadio<ViewerMode>('#ViewerSelect', 'viewer', {
+					textlog:	ViewerMode.TextLog,
+					tablelog:	ViewerMode.TableLog,
+					timeline:	ViewerMode.Timeline,
+					heatmap:	ViewerMode.Heatmap,
+					written:	ViewerMode.Written,
+				}, ViewerMode.TextLog);
+			}
+			else{
+
+			}
 
 			const viewerList	= [
 				Main.Dom.ViewerTextLog,
@@ -6074,6 +6110,7 @@ namespace Application{
 		EmulationStopCOP: boolean	= false;
 		EmulationStopWDM: boolean	= false;
 		Source: string			= '';
+		ViewerMode: ViewerMode		= ViewerMode.TextLog;
 
 		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
 			switch(instruction){
@@ -6105,6 +6142,23 @@ namespace Application{
 				}
 			}
 			return defaultValue;
+		}
+		public static SetFormRadio<InputType>(selector: string, name: string, values: {[key: string]: InputType}, inputValue: InputType, uncheckedKey: string | null){
+			let checked	= false;
+			for(const key in values){
+				const dom	= document.querySelector(`${selector} input[name="${name}"][value="${key}"]`);
+				if(dom instanceof HTMLInputElement){
+					const check	= values[key] === inputValue
+					dom.checked	= check;
+					checked		||= check;
+				}
+			}
+			if((!checked) && (uncheckedKey !== null)){
+				const dom	= document.querySelector(`${selector} input[name="${name}"][value="${uncheckedKey}"]`);
+				if(dom instanceof HTMLInputElement){
+					dom.checked	= true;
+				}
+			}
 		}
 
 		public static ApplyDomEvents<ElementType extends Element>(selector: string, domEvent: (element: ElementType) => void){
