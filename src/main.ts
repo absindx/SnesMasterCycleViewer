@@ -5913,8 +5913,8 @@ namespace Application{
 				entry.Line	= stepLog.Source?.Line ?? -1;
 				entry.Address	= stepLog.InstructionAddress;
 				entry.Code	= stepLog.Source?.Source ?? logString;
-				entry.Cycle	= stepLog.GetExecuteMasterCycle();
-				entry.Rate	= entry.Cycle / Main.Cpu.MasterCycleCounter;
+				entry.Cycle	= 0;
+				entry.Rate	= 0;
 
 				heatmap.push(entry);
 				heatmap.sort(function(a, b){
@@ -6105,9 +6105,9 @@ namespace Application{
 		StartAddress: number		= 0x008000;
 		MaxCycle: number		= 10000;
 		EmulationStopSTP: boolean	= true;
-		EmulationStopWAI: boolean	= false;
-		EmulationStopBRK: boolean	= false;
-		EmulationStopCOP: boolean	= false;
+		EmulationStopWAI: boolean	= true;
+		EmulationStopBRK: boolean	= true;
+		EmulationStopCOP: boolean	= true;
 		EmulationStopWDM: boolean	= false;
 		Source: string			= '';
 		ViewerMode: ViewerMode		= ViewerMode.TextLog;
