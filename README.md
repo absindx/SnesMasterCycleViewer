@@ -12,7 +12,6 @@ This is **not** intended to emulate SNES perfectly.
 * Add viewer
 	* Table log
 	* Timeline
-	* Heatmap
 * CPU emulation
 	* Pass test programs
 	* Emulates direct page addressing wrapping in emulation mode

@@ -3986,6 +3986,10 @@ namespace Assembler{
 					pushError(`Global label name conflict. "${globalLabel}"`);
 					return '';
 				}
+				else if(this.DefineList[globalLabel]){
+					pushError(`Global label name conflict. "${globalLabel}"`);
+					return '';
+				}
 				const scope			= new ScopeItem();
 				this.LabelList[globalLabel]	= scope;
 				this.NowScopeName		= globalLabel;
@@ -4109,9 +4113,14 @@ namespace Assembler{
 					pushError(`Define name conflict. "${defineName}"`);
 					return '';
 				}
+				if(this.LabelList[defineName]){
+					pushError(`Define name conflict. "${defineName}"`);
+					return '';
+				}
 
-				const define	= new DefineItem();
-				define.Value	= defineValue;
+				const define		= new DefineItem();
+				define.DefinedScope	= this.NowScopeName;
+				define.Value		= defineValue;
 				this.DefineList[defineName]	= define;
 
 				pushToken(CodeTokenType.Define, [defineName]);
@@ -4130,8 +4139,9 @@ namespace Assembler{
 					return '';
 				}
 
-				const define	= new DefineItem();
-				define.Value	= defineValue;
+				const define		= new DefineItem();
+				define.DefinedScope	= this.NowScopeName;
+				define.Value		= defineValue;
 				this.LabelList[this.NowScopeName].LocalDefine[defineName]	= define;
 
 				pushToken(CodeTokenType.DefineLocal, [defineName]);
@@ -4782,7 +4792,11 @@ namespace Assembler{
 			return null;
 		}
 
-		private ResolveValue(name: string | number, depth: number = 1): [number | null, string]{
+		private ResolveValue(name: string | number, depth: number = 1, scope: string | null = null): [number | null, string]{
+			if(scope === null){
+				scope	= this.NowScopeName;
+			}
+
 			// check number
 			if(typeof(name) === 'number'){
 				return [name, ''];
@@ -4796,8 +4810,9 @@ namespace Assembler{
 
 			// define
 			if(this.DefineList[name]){
+				const defineScope	= this.DefineList[name].DefinedScope;
 				const valueString	= this.DefineList[name].Value;
-				const [value, message]	= this.ResolveValue(valueString, depth);
+				const [value, message]	= this.ResolveValue(valueString, depth, defineScope);
 				if((value !== null) && (value !== InvalidAddress)){
 					return [value, 'define']
 				}
@@ -4837,8 +4852,8 @@ namespace Assembler{
 					return [null, 'Invalid operator.'];
 				}
 
-				const [leftValue, leftMessage]		= this.ResolveValue(leftString, depth);
-				const [rightValue, rightMessage]	= this.ResolveValue(rightString, depth);
+				const [leftValue, leftMessage]		= this.ResolveValue(leftString, depth, scope);
+				const [rightValue, rightMessage]	= this.ResolveValue(rightString, depth, scope);
 				if((leftValue === null) || (leftValue === InvalidAddress)){
 					return [null, leftMessage];
 				}
@@ -4850,12 +4865,16 @@ namespace Assembler{
 
 			// local label or define
 			if(name[0] === '.'){
-				const scope	= this.LabelList[this.NowScopeName];
 				if(!scope){
 					return [null, 'Scope resolution failed.'];
 				}
-				const label	= scope.LocalScope[name];
-				const define	= scope.LocalDefine[name];
+
+				const scopeLabel	= this.LabelList[scope];
+				if(!scopeLabel){
+					return [null, 'Scope resolution failed.'];
+				}
+				const label	= scopeLabel.LocalScope[name];
+				const define	= scopeLabel.LocalDefine[name];
 				if(!label && !define){
 					return [null, `Failed to resolve local label or define "${name}".`];
 				}
@@ -4866,7 +4885,7 @@ namespace Assembler{
 					return [label.Address, 'local label'];
 				}
 				else{
-					const [value, message]	= this.ResolveValue(define.Value, depth);
+					const [value, message]	= this.ResolveValue(define.Value, depth, define.DefinedScope);
 					if((value !== null) && (value !== InvalidAddress)){
 						return [value, 'local define']
 					}
@@ -5207,6 +5226,7 @@ namespace Assembler{
 	}
 
 	class DefineItem{
+		DefinedScope: string	= '';
 		Value: number | string	= InvalidAddress;
 	}
 
@@ -5368,7 +5388,7 @@ namespace Application{
 		};
 
 		private static HeatmapColor		= '204, 0, 0';	// #CC0000
-		private static HeatmapMaxIntensity	= 0.50;
+		private static HeatmapMaxIntensity	= 1.00;
 
 		public static Initialize(){
 			Main.Assembled	= null;
