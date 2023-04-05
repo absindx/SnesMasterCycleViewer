@@ -4262,10 +4262,24 @@ namespace Assembler{
 						}
 						this.NowAddress	+= length;
 						break;
-					case CodeTokenType.Define:			// "Xxx=YY"
-					case CodeTokenType.DefineLocal:			// ".Xxx=YY"
-						// NOP
+					case CodeTokenType.Define: {			// "Xxx=YY"
+						const name	= token.Options[0];
+						if(typeof(name) !== 'string'){
+							pushTypeError();
+							break;
+						}
+						this.DefineList[name].DefinedAddress	= this.NowAddress;
 						break;
+					}
+					case CodeTokenType.DefineLocal:{		// ".Xxx=YY"
+						const name	= token.Options[0];
+						if(typeof(name) !== 'string'){
+							pushTypeError();
+							break;
+						}
+						this.LabelList[this.NowScopeName].LocalDefine[name].DefinedAddress	= this.NowAddress;
+						break;
+					}
 				}
 			}
 
@@ -4792,9 +4806,12 @@ namespace Assembler{
 			return null;
 		}
 
-		private ResolveValue(name: string | number, depth: number = 1, scope: string | null = null): [number | null, string]{
+		private ResolveValue(name: string | number, depth: number = 1, scope: string | null = null, nowAddress: number | null = null): [number | null, string]{
+			if(nowAddress === null){
+				nowAddress	= this.NowAddress;
+			}
 			if(scope === null){
-				scope	= this.NowScopeName;
+				scope		= this.NowScopeName;
 			}
 
 			// check number
@@ -4810,9 +4827,8 @@ namespace Assembler{
 
 			// define
 			if(this.DefineList[name]){
-				const defineScope	= this.DefineList[name].DefinedScope;
-				const valueString	= this.DefineList[name].Value;
-				const [value, message]	= this.ResolveValue(valueString, depth, defineScope);
+				const define		= this.DefineList[name];
+				const [value, message]	= this.ResolveValue(define.Value, depth, define.DefinedScope, define.DefinedAddress);
 				if((value !== null) && (value !== InvalidAddress)){
 					return [value, 'define']
 				}
@@ -4824,7 +4840,7 @@ namespace Assembler{
 			// plus label
 			if(name === '+'){
 				for(let i = 0; i < this.PlusLabelList.length; i++){
-					if(this.NowAddress < this.PlusLabelList[i]){
+					if(nowAddress < this.PlusLabelList[i]){
 						return [this.PlusLabelList[i], 'plus label'];
 					}
 				}
@@ -4834,7 +4850,7 @@ namespace Assembler{
 			// minus label
 			if(name === '-'){
 				for(let i = this.MinusLabelList.length - 1; i >= 0; i--){
-					if(this.MinusLabelList[i] <= this.NowAddress){
+					if(this.MinusLabelList[i] <= nowAddress){
 						return [this.MinusLabelList[i], 'minus label'];
 					}
 				}
@@ -4852,8 +4868,8 @@ namespace Assembler{
 					return [null, 'Invalid operator.'];
 				}
 
-				const [leftValue, leftMessage]		= this.ResolveValue(leftString, depth, scope);
-				const [rightValue, rightMessage]	= this.ResolveValue(rightString, depth, scope);
+				const [leftValue, leftMessage]		= this.ResolveValue(leftString, depth, scope, nowAddress);
+				const [rightValue, rightMessage]	= this.ResolveValue(rightString, depth, scope, nowAddress);
 				if((leftValue === null) || (leftValue === InvalidAddress)){
 					return [null, leftMessage];
 				}
@@ -4885,7 +4901,7 @@ namespace Assembler{
 					return [label.Address, 'local label'];
 				}
 				else{
-					const [value, message]	= this.ResolveValue(define.Value, depth, define.DefinedScope);
+					const [value, message]	= this.ResolveValue(define.Value, depth, define.DefinedScope, define.DefinedAddress);
 					if((value !== null) && (value !== InvalidAddress)){
 						return [value, 'local define']
 					}
@@ -5227,6 +5243,7 @@ namespace Assembler{
 
 	class DefineItem{
 		DefinedScope: string	= '';
+		DefinedAddress: number	= InvalidAddress;
 		Value: number | string	= InvalidAddress;
 	}
 

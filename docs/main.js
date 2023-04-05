@@ -3537,6 +3537,10 @@ var Assembler;
                     pushError(`Global label name conflict. "${globalLabel}"`);
                     return '';
                 }
+                else if (this.DefineList[globalLabel]) {
+                    pushError(`Global label name conflict. "${globalLabel}"`);
+                    return '';
+                }
                 const scope = new ScopeItem();
                 this.LabelList[globalLabel] = scope;
                 this.NowScopeName = globalLabel;
@@ -3642,7 +3646,12 @@ var Assembler;
                     pushError(`Define name conflict. "${defineName}"`);
                     return '';
                 }
+                if (this.LabelList[defineName]) {
+                    pushError(`Define name conflict. "${defineName}"`);
+                    return '';
+                }
                 const define = new DefineItem();
+                define.DefinedScope = this.NowScopeName;
                 define.Value = defineValue;
                 this.DefineList[defineName] = define;
                 pushToken(CodeTokenType.Define, [defineName]);
@@ -3661,6 +3670,7 @@ var Assembler;
                     return '';
                 }
                 const define = new DefineItem();
+                define.DefinedScope = this.NowScopeName;
                 define.Value = defineValue;
                 this.LabelList[this.NowScopeName].LocalDefine[defineName] = define;
                 pushToken(CodeTokenType.DefineLocal, [defineName]);
@@ -3775,9 +3785,24 @@ var Assembler;
                         }
                         this.NowAddress += length;
                         break;
-                    case CodeTokenType.Define:
-                    case CodeTokenType.DefineLocal:
+                    case CodeTokenType.Define: {
+                        const name = token.Options[0];
+                        if (typeof (name) !== 'string') {
+                            pushTypeError();
+                            break;
+                        }
+                        this.DefineList[name].DefinedAddress = this.NowAddress;
                         break;
+                    }
+                    case CodeTokenType.DefineLocal: {
+                        const name = token.Options[0];
+                        if (typeof (name) !== 'string') {
+                            pushTypeError();
+                            break;
+                        }
+                        this.LabelList[this.NowScopeName].LocalDefine[name].DefinedAddress = this.NowAddress;
+                        break;
+                    }
                 }
             }
             this.PlusLabelList.sort();
@@ -4220,7 +4245,13 @@ var Assembler;
             }
             return null;
         }
-        ResolveValue(name, depth = 1) {
+        ResolveValue(name, depth = 1, scope = null, nowAddress = null) {
+            if (nowAddress === null) {
+                nowAddress = this.NowAddress;
+            }
+            if (scope === null) {
+                scope = this.NowScopeName;
+            }
             if (typeof (name) === 'number') {
                 return [name, ''];
             }
@@ -4229,8 +4260,8 @@ var Assembler;
                 return [null, 'The definition is too deep.'];
             }
             if (this.DefineList[name]) {
-                const valueString = this.DefineList[name].Value;
-                const [value, message] = this.ResolveValue(valueString, depth);
+                const define = this.DefineList[name];
+                const [value, message] = this.ResolveValue(define.Value, depth, define.DefinedScope, define.DefinedAddress);
                 if ((value !== null) && (value !== InvalidAddress)) {
                     return [value, 'define'];
                 }
@@ -4240,7 +4271,7 @@ var Assembler;
             }
             if (name === '+') {
                 for (let i = 0; i < this.PlusLabelList.length; i++) {
-                    if (this.NowAddress < this.PlusLabelList[i]) {
+                    if (nowAddress < this.PlusLabelList[i]) {
                         return [this.PlusLabelList[i], 'plus label'];
                     }
                 }
@@ -4248,7 +4279,7 @@ var Assembler;
             }
             if (name === '-') {
                 for (let i = this.MinusLabelList.length - 1; i >= 0; i--) {
-                    if (this.MinusLabelList[i] <= this.NowAddress) {
+                    if (this.MinusLabelList[i] <= nowAddress) {
                         return [this.MinusLabelList[i], 'minus label'];
                     }
                 }
@@ -4263,8 +4294,8 @@ var Assembler;
                 if (!operatorFunction) {
                     return [null, 'Invalid operator.'];
                 }
-                const [leftValue, leftMessage] = this.ResolveValue(leftString, depth);
-                const [rightValue, rightMessage] = this.ResolveValue(rightString, depth);
+                const [leftValue, leftMessage] = this.ResolveValue(leftString, depth, scope, nowAddress);
+                const [rightValue, rightMessage] = this.ResolveValue(rightString, depth, scope, nowAddress);
                 if ((leftValue === null) || (leftValue === InvalidAddress)) {
                     return [null, leftMessage];
                 }
@@ -4274,12 +4305,15 @@ var Assembler;
                 return [operatorFunction(leftValue, rightValue), 'expression'];
             }
             if (name[0] === '.') {
-                const scope = this.LabelList[this.NowScopeName];
                 if (!scope) {
                     return [null, 'Scope resolution failed.'];
                 }
-                const label = scope.LocalScope[name];
-                const define = scope.LocalDefine[name];
+                const scopeLabel = this.LabelList[scope];
+                if (!scopeLabel) {
+                    return [null, 'Scope resolution failed.'];
+                }
+                const label = scopeLabel.LocalScope[name];
+                const define = scopeLabel.LocalDefine[name];
                 if (!label && !define) {
                     return [null, `Failed to resolve local label or define "${name}".`];
                 }
@@ -4290,7 +4324,7 @@ var Assembler;
                     return [label.Address, 'local label'];
                 }
                 else {
-                    const [value, message] = this.ResolveValue(define.Value, depth);
+                    const [value, message] = this.ResolveValue(define.Value, depth, define.DefinedScope, define.DefinedAddress);
                     if ((value !== null) && (value !== InvalidAddress)) {
                         return [value, 'local define'];
                     }
@@ -4584,6 +4618,8 @@ var Assembler;
     }
     class DefineItem {
         constructor() {
+            this.DefinedScope = '';
+            this.DefinedAddress = InvalidAddress;
             this.Value = InvalidAddress;
         }
     }
@@ -5342,7 +5378,7 @@ var Application;
         'ViewerWritten': Main.dummyNode,
     };
     Main.HeatmapColor = '204, 0, 0';
-    Main.HeatmapMaxIntensity = 0.50;
+    Main.HeatmapMaxIntensity = 1.00;
     Main.ClearResultViewerFunctions = [
         Main.ClearResultViewer_TextLog,
         Main.ClearResultViewer_TableLog,
