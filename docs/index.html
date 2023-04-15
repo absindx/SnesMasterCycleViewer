@@ -114,7 +114,31 @@ Start:		LDA	#$55
     </article>
     <article id="ViewerTimeline" class="hide">
      <h3>Timeline</h3>
-     <p>TODO: Implements</p>
+     <p id="ViewerTimeline_Legend">Legend:
+      <span class="legend data FetchOpcode"	>FetchOpcode</span>
+      <span class="legend data FetchOperand"	>FetchOperand</span>
+      <span class="legend data ReadIndirect"	>ReadIndirect</span>
+      <span class="legend data Read"		>Read</span>
+      <span class="legend data ReadDummy"	>ReadDummy</span>
+      <span class="legend data Write"		>Write</span>
+      <span class="legend data WriteDummy"	>WriteDummy</span>
+      <span class="legend data PullStack"	>PullStack</span>
+      <span class="legend data PushStack"	>PushStack</span>
+      <span class="legend data Penalty"		>Penalty</span>
+     </p>
+     <div id="ViewerTimeline_Container">
+      <table id="ViewerTimeline_Table">
+       <thead>
+        <tr>
+         <th class="address sticky">Address</th>
+         <th class="code sticky">Code</th>
+         <th class="timeline">Timeline</th>
+        </tr>
+       </thead>
+       <tbody>
+       </tbody>
+      </table>
+     </div>
     </article>
     <article id="ViewerHeatmap" class="hide">
      <h3>Heatmap</h3>

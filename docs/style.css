@@ -114,6 +114,20 @@ table{
 tr:hover{
 	background-color	: RGBA(0, 174, 239, 0.10);
 }
+.colhover th, .colhover td{
+	position		: relative;
+}
+.colhover td:hover::after,
+.colhover th:hover::after{
+	content			: "";
+	position		: absolute;
+	background-color	: RGBA(0, 174, 239, 0.1);
+	left			: 0;
+	top			: -5000px;
+	height			: 10000px;
+	width			: 100%;
+	z-index			: -1;
+}
 thead td, tr.head td, th{
 	border			: solid 1px #bbbbbb;
 	background-color	: RGBA(0, 0, 0, 0.1);
@@ -195,6 +209,12 @@ code.inline{
 	--application-width	: 96ch;
 	--large-textbox-width	: 60%;
 	--small-textbox-width	: 40%;
+	--table-border-light	: solid 1px #bbbbbb;
+	--table-border-dark	: solid 1px #555555;
+	--table-border		: var(--table-border-light);
+}
+:root .dark{
+	--table-border		: var(--table-border-dark);
 }
 
 body{
@@ -335,10 +355,99 @@ fieldset dl{
 	margin			: 16px auto;
 	width			: 144ch;
 	max-width		: 90%;
-	height			: 32ch;
-	min-height		: 16ch;
+	height			: 16em;
+	min-height		: 8em;
 	resize			: vertical;
 	overflow		: scroll;
+}
+
+#ViewerTimeline .legend{
+	border			: 1px solid RGBA(128, 128, 128, 0.25);
+	padding			: 2px 4px;
+}
+#ViewerTimeline_Legend{
+	text-align		: center;
+}
+#ViewerTimeline .data{
+	font-family		: var(--monospace-font);
+	color			: RGBA(255, 255, 255, 0.80);
+}
+#ViewerTimeline .FetchOpcode	{	background-color: #FFC000;	}
+#ViewerTimeline .FetchOperand	{	background-color: #C0C000;	}
+#ViewerTimeline .ReadIndirect	{	background-color: #008000;	}
+#ViewerTimeline .Read		{	background-color: #00C040;	}
+#ViewerTimeline .ReadDummy	{	background-color: #40C080;	}
+#ViewerTimeline .Write		{	background-color: #0080FF;	}
+#ViewerTimeline .WriteDummy	{	background-color: #40C0FF;	}
+#ViewerTimeline .PullStack	{	background-color: #FF80FF;	}
+#ViewerTimeline .PushStack	{	background-color: #C040C0;	}
+#ViewerTimeline .Penalty	{	background-color: #FF4040;	}
+#ViewerTimeline_Container{
+	margin			: 4px 8px;
+}
+#ViewerTimeline_Table{
+	max-height		: 32em;
+	overflow		: auto;
+	border			: var(--table-border);
+}
+#ViewerTimeline_Table th{
+	background-color	: #E5E5E5;
+	position		: sticky;
+	top			: 0;
+}
+.dark #ViewerTimeline_Table th{
+	background-color	: #282828;
+}
+#ViewerTimeline_Table th, #ViewerTimeline_Table td{
+	border			: none;
+}
+#ViewerTimeline_Table th{
+	border-bottom		: var(--table-border);
+}
+#ViewerTimeline_Table .sticky{
+	position		: sticky;
+	z-index			: 1;
+}
+#ViewerTimeline_Table th.sticky{
+	padding-left		: 0;
+	padding-right		: 0;
+}
+#ViewerTimeline_Table th.address{
+	min-width		: 96px;
+}
+#ViewerTimeline_Table th.code{
+	min-width		: 128px;
+}
+#ViewerTimeline_Table .dummyTimeline{
+	width			: 100%;
+}
+#ViewerTimeline_Table td.address{
+	font-family		: var(--monospace-font);
+	text-align		: center;
+}
+#ViewerTimeline_Table td.code{
+	font-family		: var(--monospace-font);
+	text-align		: left;
+}
+#ViewerTimeline_Table .address{
+	left			: 0;
+}
+#ViewerTimeline_Table .code{
+	left			: 96px;
+}
+#ViewerTimeline_Table .sticky:before{
+	content			: "";
+	position		: absolute;
+	top			: -1px;
+	left			: -1px;
+	width			: 100%;
+	height			: 100%;
+	border-right		: var(--table-border);
+	border-bottom		: var(--table-border);
+}
+#ViewerTimeline_Table th.sticky:before,
+#ViewerTimeline_Table tr:last-child td:before{
+	border-bottom		: none;
 }
 
 #ViewerHeatmap_Table{

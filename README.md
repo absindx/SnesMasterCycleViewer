@@ -20,3 +20,4 @@ This is **not** intended to emulate SNES perfectly.
 	* WRAM data access
 	* ...
 * Manual
+* Compress source in URL parameters
