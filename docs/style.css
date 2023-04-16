@@ -3,16 +3,22 @@
 
 :root{
 	--monospace-font	: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+	--application-font-color: black;
+	--application-background: white;
+	--table-border		: solid 1px #bbbbbb;
+}
+:root .dark{
+	--application-font-color: silver;
+	--application-background: #101010;
+	--table-border		: solid 1px #555555;
 }
 
 body{
 	margin			: 0px;
 	padding			: 0px;
-	color			: #000000;
-}
-body.dark{
-	color			: silver;
-	background-color	: #101010;
+	color			: var(--application-font-color);
+	background		: var(--application-background);
 }
 
 h1, h2{
@@ -209,12 +215,6 @@ code.inline{
 	--application-width	: 96ch;
 	--large-textbox-width	: 60%;
 	--small-textbox-width	: 40%;
-	--table-border-light	: solid 1px #bbbbbb;
-	--table-border-dark	: solid 1px #555555;
-	--table-border		: var(--table-border-light);
-}
-:root .dark{
-	--table-border		: var(--table-border-dark);
 }
 
 body{
@@ -371,6 +371,7 @@ fieldset dl{
 #ViewerTimeline .data{
 	font-family		: var(--monospace-font);
 	color			: RGBA(255, 255, 255, 0.80);
+	text-align		: center;
 }
 #ViewerTimeline .FetchOpcode	{	background-color: #FFC000;	}
 #ViewerTimeline .FetchOperand	{	background-color: #C0C000;	}
@@ -401,9 +402,6 @@ fieldset dl{
 #ViewerTimeline_Table th, #ViewerTimeline_Table td{
 	border			: none;
 }
-#ViewerTimeline_Table th{
-	border-bottom		: var(--table-border);
-}
 #ViewerTimeline_Table .sticky{
 	position		: sticky;
 	z-index			: 1;
@@ -411,6 +409,7 @@ fieldset dl{
 #ViewerTimeline_Table th.sticky{
 	padding-left		: 0;
 	padding-right		: 0;
+	z-index			: 2;
 }
 #ViewerTimeline_Table th.address{
 	min-width		: 96px;
@@ -418,14 +417,19 @@ fieldset dl{
 #ViewerTimeline_Table th.code{
 	min-width		: 128px;
 }
+#ViewerTimeline_Table th.timeline{
+	text-align		: left;
+}
 #ViewerTimeline_Table .dummyTimeline{
 	width			: 100%;
 }
 #ViewerTimeline_Table td.address{
+	background		: var(--application-background);
 	font-family		: var(--monospace-font);
 	text-align		: center;
 }
 #ViewerTimeline_Table td.code{
+	background		: var(--application-background);
 	font-family		: var(--monospace-font);
 	text-align		: left;
 }
@@ -435,6 +439,7 @@ fieldset dl{
 #ViewerTimeline_Table .code{
 	left			: 96px;
 }
+#ViewerTimeline_Table th:before,
 #ViewerTimeline_Table .sticky:before{
 	content			: "";
 	position		: absolute;
@@ -445,9 +450,18 @@ fieldset dl{
 	border-right		: var(--table-border);
 	border-bottom		: var(--table-border);
 }
-#ViewerTimeline_Table th.sticky:before,
+#ViewerTimeline_Table th:not(.sticky):before{
+	border-right		: none;
+}
 #ViewerTimeline_Table tr:last-child td:before{
 	border-bottom		: none;
+}
+#ViewerTimeline_Table .instructionStart{
+	border-left		: var(--table-border);
+	border-left-style	: dashed;
+}
+#ViewerTimeline_Table tr .instructionStart:first{
+	border-left		: none;
 }
 
 #ViewerHeatmap_Table{

@@ -5960,58 +5960,94 @@ namespace Application{
 
 			// create data
 			const timelineLogs: Emulator.StepLog[][]	= [];
+			const stepLength: number[]			= [];
 			for(let s = 0; s < cpu.Logs.length; s++){
 				const step	= cpu.Logs[s];
 				const entry	= timelineLogs[step.InstructionAddress] ?? [];
 				entry.push(step);
 				timelineLogs[step.InstructionAddress]	= entry;
+
+				stepLength.push(step.GetExecuteCpuCycle());
 			}
 			if(timelineLogs.length <= 0){
 				return;
 			}
 			DomUtility.RemoveCildren(tableBody);
 
+			// reset header
+			const tableCols		= 2;
+			for(let i = tableHeader.children.length - 1; tableCols <= i; i--){
+				tableHeader.children[i].remove();
+			}
+
 			// create header
-			const timelineCols	= cpu.MasterCycleCounter / 2;
-			for(let i = 0; i < (timelineCols - 1); i++){
+			let timelineHeaderCycle	= 0;
+			for(let s = 0; s < stepLength.length; s++){
 				const colTime	= document.createElement('th');
 				tableHeader.appendChild(colTime);
+				colTime.classList.add('timeline');
+				colTime.classList.add('instructionStart');
+				colTime.setAttribute('colspan', stepLength[s].toString());
+				colTime.textContent	= cpu.Logs[s].MasterCycle.toString();
 			}
 
 			// create body
-			function addRow(address: number, code: string): HTMLTableRowElement{
-				const row		= document.createElement('tr');
+			function addRow(row: Emulator.StepLog[]): HTMLTableRowElement{
+				const address		= row[0].InstructionAddress;
+				const code		= row[0].GetInstructionLogString();
+
+				const tableRow		= document.createElement('tr');
 
 				const colAddress	= document.createElement('td');
 				colAddress.textContent	= `$${Utility.Format.ToHexString(address, 6)}`;
 				colAddress.classList.add('sticky');
 				colAddress.classList.add('address');
-				row.appendChild(colAddress);
+				tableRow.appendChild(colAddress);
 
 				const colCode		= document.createElement('td');
 				colCode.textContent	= code;
 				colCode.classList.add('sticky');
 				colCode.classList.add('code');
-				row.appendChild(colCode);
+				tableRow.appendChild(colCode);
 
-				for(let i = 0; i < timelineCols; i++){
-					const colTime	= document.createElement('td');
-					row.appendChild(colTime);
+				let rowIndex		= 0;
+				let nowCycle		= 0;
+				for(let s = 0; s < stepLength.length; s++){
+					if((row.length <= rowIndex) || (row[rowIndex].CpuCycle !== nowCycle)){
+						const colTime	= document.createElement('td');
+						tableRow.appendChild(colTime);
+						colTime.classList.add('instructionStart');
+						colTime.setAttribute('colspan', stepLength[s].toString());
+					}
+					else{
+						const step	= row[rowIndex];
+						for(let c = 0; c < step.AccessLog.length; c++){
+							const access	= step.AccessLog[c];
+							const colCycle	= document.createElement('td');
+							tableRow.appendChild(colCycle);
+							colCycle.classList.add('data');
+							colCycle.classList.add(Emulator.AccessType[access.Type]);
+							colCycle.classList.add(Emulator.AccessSpeed[access.Cycle]);
+							colCycle.textContent	= `$${Utility.Format.ToHexString(access.DataBus, 2)}`;
+							if(c === 0){
+								colCycle.classList.add('instructionStart');
+							}
+						}
+						rowIndex++;
+					}
+					nowCycle	+= stepLength[s];
 				}
 
-				tableBody?.appendChild(row);
+				tableBody?.appendChild(tableRow);
 
-				return row;
+				return tableRow;
 			}
 
 			// add rows
 			for(const key in timelineLogs){
-				const entry	= timelineLogs[key];
-				const row	= addRow(entry[0].InstructionAddress, entry[0].GetInstructionLogString());
+				const row	= addRow(timelineLogs[key]);
 			}
 
-			// TODO: Implements
-			tableHeader.children[2].textContent	= 'TODO';
 		}
 		private static ClearResultViewer_Heatmap(){
 			Main.ClearTableBody('#ViewerHeatmap_Table', 5);
