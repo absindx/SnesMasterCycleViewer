@@ -115,16 +115,17 @@ Start:		LDA	#$55
     <article id="ViewerTimeline" class="hide">
      <h3>Timeline</h3>
      <p id="ViewerTimeline_Legend">Legend:
-      <span class="legend data FetchOpcode"	>FetchOpcode</span>
-      <span class="legend data FetchOperand"	>FetchOperand</span>
-      <span class="legend data ReadIndirect"	>ReadIndirect</span>
-      <span class="legend data Read"		>Read</span>
-      <span class="legend data ReadDummy"	>ReadDummy</span>
-      <span class="legend data Write"		>Write</span>
-      <span class="legend data WriteDummy"	>WriteDummy</span>
-      <span class="legend data PullStack"	>PullStack</span>
-      <span class="legend data PushStack"	>PushStack</span>
-      <span class="legend data Penalty"		>Penalty</span>
+      <span class="legend data FetchOpcode"	>FetchOpcode</span
+       ><span class="legend data FetchOperand"	>FetchOperand</span
+       ><span class="legend data ReadIndirect"	>ReadIndirect</span
+       ><span class="legend data Read"		>Read</span
+       ><span class="legend data ReadDummy"	>ReadDummy</span
+       ><span class="legend data Write"		>Write</span
+       ><span class="legend data WriteDummy"	>WriteDummy</span
+       ><span class="legend data PullStack"	>PullStack</span
+       ><span class="legend data PushStack"	>PushStack</span
+       ><span class="legend data Penalty"	>Penalty</span
+       >
      </p>
      <div id="ViewerTimeline_Container">
       <table id="ViewerTimeline_Table">
@@ -143,7 +144,7 @@ Start:		LDA	#$55
     <article id="ViewerHeatmap" class="hide">
      <h3>Heatmap</h3>
      <div>
-      <table id="ViewerHeatmap_Table">
+      <table id="ViewerHeatmap_Table" class="stickyHeader">
        <thead>
         <tr>
          <th class="line">Line</th>
@@ -161,7 +162,7 @@ Start:		LDA	#$55
     <article id="ViewerWritten" class="hide">
      <h3>Written memory</h3>
      <div>
-      <table id="ViewerWritten_Table">
+      <table id="ViewerWritten_Table" class="stickyHeader">
        <thead>
         <tr>
          <th class="region">Region</th>

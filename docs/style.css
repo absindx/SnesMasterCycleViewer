@@ -6,12 +6,26 @@
 
 	--application-font-color: black;
 	--application-background: white;
-	--table-border		: solid 1px #bbbbbb;
+	--base-color		: #00AEEF;
+
+	--table-header		: RGBA(0, 0, 0, 0.1);
+	--table-header-opaque	: #E5E5E5;
+	--table-header-border	: solid 1px #bbbbbb;
+	--table-border		: solid 1px #cccccc;
+	--table-hover		: RGBA(0, 174, 239, 0.1);
+	--table-hover-header-opaque	: #CFE0E6;
+	--table-hover-opaque		: #E6F7FE;
 }
 :root .dark{
 	--application-font-color: silver;
 	--application-background: #101010;
-	--table-border		: solid 1px #555555;
+
+	--table-header		: RGBA(255, 255, 255, 0.1);
+	--table-header-opaque	: #191919;
+	--table-header-border	: solid 1px #555555;
+	--table-border		: solid 1px #444444;
+	--table-hover-header-opaque	: #17272E;
+	--table-hover-opaque		: #0F1F26;
 }
 
 body{
@@ -118,7 +132,7 @@ table{
 	border-collapse		: collapse;
 }
 tr:hover{
-	background-color	: RGBA(0, 174, 239, 0.10);
+	background-color	: var(--table-hover);
 }
 .colhover th, .colhover td{
 	position		: relative;
@@ -135,20 +149,13 @@ tr:hover{
 	z-index			: -1;
 }
 thead td, tr.head td, th{
-	border			: solid 1px #bbbbbb;
-	background-color	: RGBA(0, 0, 0, 0.1);
+	border			: var(--table-header-border);
+	background-color	: var(--table-header);
 	font-weight		: bold;
 	text-align		: center;
 }
-.dark thead td, .dark tr.head td, .dark th{
-	border-color		: #555555;
-	background-color	: RGBA(255, 255, 255, 0.1);
-}
 td{
-	border			: solid 1px #cccccc;
-}
-.dark td{
-	border-color		: #444444;
+	border			: var(--table-border);
 }
 td, th{
 	padding			: 2px 8px;
@@ -215,6 +222,8 @@ code.inline{
 	--application-width	: 96ch;
 	--large-textbox-width	: 60%;
 	--small-textbox-width	: 40%;
+	--result-max-height	: 640px;
+	--result-content-height	: calc(var(--result-max-height) - 32px);
 }
 
 body{
@@ -351,11 +360,47 @@ fieldset dl{
 	background-color	: #90B0BD;
 }
 
+#Result article{
+	height			: var(--result-max-height);
+	overflow		: hidden;
+}
+
+table.stickyHeader{
+	border			: var(--table-border);
+	border-collapse		: separate;
+	border-spacing		: 0;
+}
+table.stickyHeader th{
+	position		: sticky;
+	top			: 0;
+	background-color	: var(--table-header-opaque);
+}
+table.stickyHeader tr:hover th{
+	background-color	: var(--table-hover-header-opaque);
+}
+table.stickyHeader th,
+table.stickyHeader td{
+	border-top		: none;
+}
+table.stickyHeader tbody tr:last-child td{
+	border-bottom		: none;
+}
+table.stickyHeader th,
+table.stickyHeader td{
+	border-left		: none;
+}
+table.stickyHeader tr th:last-child,
+table.stickyHeader tr td:last-child{
+	border-right		: none;
+}
+
+
 #ViewerTextLog_Log{
 	margin			: 16px auto;
 	width			: 144ch;
 	max-width		: 90%;
 	height			: 16em;
+	max-height		: calc(var(--result-content-height) - 2em);
 	min-height		: 8em;
 	resize			: vertical;
 	overflow		: scroll;
@@ -363,10 +408,14 @@ fieldset dl{
 
 #ViewerTimeline .legend{
 	border			: 1px solid RGBA(128, 128, 128, 0.25);
+	font-size		: 90%;
+	margin			: 0px 1px;
 	padding			: 2px 4px;
 }
 #ViewerTimeline_Legend{
 	text-align		: center;
+	margin-left		: 0;
+	margin-right		: 0;
 }
 #ViewerTimeline .data{
 	font-family		: var(--monospace-font);
@@ -376,8 +425,8 @@ fieldset dl{
 #ViewerTimeline .FetchOpcode	{	background-color: #FFC000;	}
 #ViewerTimeline .FetchOperand	{	background-color: #C0C000;	}
 #ViewerTimeline .ReadIndirect	{	background-color: #008000;	}
-#ViewerTimeline .Read		{	background-color: #00C040;	}
-#ViewerTimeline .ReadDummy	{	background-color: #40C080;	}
+#ViewerTimeline .Read		{	background-color: #40C040;	}
+#ViewerTimeline .ReadDummy	{	background-color: #00C080;	}
 #ViewerTimeline .Write		{	background-color: #0080FF;	}
 #ViewerTimeline .WriteDummy	{	background-color: #40C0FF;	}
 #ViewerTimeline .PullStack	{	background-color: #FF80FF;	}
@@ -387,17 +436,16 @@ fieldset dl{
 	margin			: 4px 8px;
 }
 #ViewerTimeline_Table{
-	max-height		: 32em;
+	max-height		: calc(var(--result-content-height) - 4em);
 	overflow		: auto;
 	border			: var(--table-border);
 }
 #ViewerTimeline_Table th{
-	background-color	: #E5E5E5;
+	background-color	: var(--table-header-opaque);
 	position		: sticky;
 	top			: 0;
-}
-.dark #ViewerTimeline_Table th{
-	background-color	: #282828;
+	max-width		: 0;
+	overflow		: hidden;
 }
 #ViewerTimeline_Table th, #ViewerTimeline_Table td{
 	border			: none;
@@ -433,6 +481,12 @@ fieldset dl{
 	font-family		: var(--monospace-font);
 	text-align		: left;
 }
+#ViewerTimeline_Table tr:hover th{
+	background-color	: var(--table-hover-header-opaque);
+}
+#ViewerTimeline_Table tr:hover td.address, #ViewerTimeline_Table tr:hover td.code{
+	background-color	: var(--table-hover-opaque);
+}
 #ViewerTimeline_Table .address{
 	left			: 0;
 }
@@ -460,13 +514,16 @@ fieldset dl{
 	border-left		: var(--table-border);
 	border-left-style	: dashed;
 }
-#ViewerTimeline_Table tr .instructionStart:first{
+#ViewerTimeline_Table tr .instructionStart:nth-child(3){
 	border-left		: none;
 }
 
 #ViewerHeatmap_Table{
 	width			: var(--application-width);
+	max-height		: calc(var(--result-content-height) - 2em);
+	overflow		: auto;
 }
+
 #ViewerHeatmap th.line{
 	width			: 6ch;
 }

@@ -5412,8 +5412,10 @@ namespace Application{
 			'ViewerWritten':		Main.dummyNode,
 		};
 
+		private static ResultEnable		= false;
 		private static HeatmapColor		= '204, 0, 0';	// #CC0000
 		private static HeatmapMaxIntensity	= 1.00;
+		private static TimelineGenerated	= false;
 
 		public static Initialize(){
 			Main.Assembled	= null;
@@ -5464,7 +5466,8 @@ namespace Application{
 		}
 
 		public static Assemble(){
-			Main.Assembled	= null;
+			Main.ResultEnable	= false;
+			Main.Assembled		= null;
 			Main.ClearResultViewer();
 
 			// Setting from form
@@ -5534,6 +5537,7 @@ namespace Application{
 				}
 			}
 
+			Main.ResultEnable	= true;
 			Main.UpdateResultViewer(cpu);
 		}
 
@@ -5836,9 +5840,6 @@ namespace Application{
 					written:	ViewerMode.Written,
 				}, ViewerMode.TextLog);
 			}
-			else{
-
-			}
 
 			const viewerList	= [
 				Main.Dom.ViewerTextLog,
@@ -5854,6 +5855,14 @@ namespace Application{
 
 			let selectedDom		= viewerList[selected];
 			selectedDom.classList.remove('hide');
+
+			if(Main.ResultEnable){
+				switch(selected){
+					case ViewerMode.Timeline:
+						this.UpdateResultViewer_Timeline(Main.Cpu);
+						break;
+				}
+			}
 		}
 		private static CheckSelectedViewer(element: HTMLElement){
 			element.addEventListener('change', (e: Event) => {
@@ -5871,7 +5880,7 @@ namespace Application{
 		private static UpdateResultViewerFunctions: ((cpu: Emulator.Cpu) => void)[]	= [
 			Main.UpdateResultViewer_TextLog,
 			Main.UpdateResultViewer_TableLog,
-			Main.UpdateResultViewer_Timeline,
+			//Main.UpdateResultViewer_Timeline,
 			Main.UpdateResultViewer_Heatmap,
 			Main.UpdateResultViewer_Written,
 		];
@@ -5887,6 +5896,8 @@ namespace Application{
 				}
 				catch{}
 			});
+
+			Main.TimelineGenerated	= false;
 		}
 		private static UpdateResultViewer(cpu: Emulator.Cpu){
 			Main.ClearResultViewer();
@@ -5901,6 +5912,7 @@ namespace Application{
 				}
 				catch{}
 			});
+			Main.UpdateSelectedViewer();
 		}
 		private static ClearResultViewer_TextLog(){
 			Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
@@ -5949,6 +5961,9 @@ namespace Application{
 			tableBody.children[1].classList.add('sticky');
 		}
 		private static UpdateResultViewer_Timeline(cpu: Emulator.Cpu){
+			if(Main.TimelineGenerated){
+				return;
+			}
 			const tableHeader	= document.querySelector<HTMLElement>('#ViewerTimeline_Table thead tr');
 			if(!tableHeader){
 				return;
@@ -6048,6 +6063,7 @@ namespace Application{
 				const row	= addRow(timelineLogs[key]);
 			}
 
+			Main.TimelineGenerated	= true;
 		}
 		private static ClearResultViewer_Heatmap(){
 			Main.ClearTableBody('#ViewerHeatmap_Table', 5);
