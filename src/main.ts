@@ -6035,7 +6035,8 @@ namespace Application{
 						colTime.setAttribute('colspan', stepLength[s].toString());
 					}
 					else{
-						const step	= row[rowIndex];
+						const step		= row[rowIndex];
+						let instructionCycle	= step.MasterCycle;
 						for(let c = 0; c < step.AccessLog.length; c++){
 							const access	= step.AccessLog[c];
 							const colCycle	= document.createElement('td');
@@ -6043,10 +6044,18 @@ namespace Application{
 							colCycle.classList.add('data');
 							colCycle.classList.add(Emulator.AccessType[access.Type]);
 							colCycle.classList.add(Emulator.AccessSpeed[access.Cycle]);
-							colCycle.textContent	= `$${Utility.Format.ToHexString(access.DataBus, 2)}`;
+							//colCycle.textContent	= `$${Utility.Format.ToHexString(access.DataBus, 2)}`;
+							let tooltip	= '';
+							tooltip	+= `Cycle: ${instructionCycle}` + '\n';
+							tooltip	+= `Access: ${Emulator.AccessType[access.Type]}` + '\n';
+							tooltip	+= `Address: $${Utility.Format.ToHexString(access.AddressBus, 6)}` + '\n';
+							tooltip	+= `Data: $${Utility.Format.ToHexString(access.DataBus, 2)}` + '\n';
+							tooltip	+= `Region: ${Emulator.AccessRegion[access.Region]} @ ${Emulator.AccessSpeed[access.Cycle]}`;
+							colCycle.setAttribute('title', tooltip);
 							if(c === 0){
 								colCycle.classList.add('instructionStart');
 							}
+							instructionCycle	+= access.Cycle;
 						}
 						rowIndex++;
 					}
