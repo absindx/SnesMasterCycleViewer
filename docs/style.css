@@ -19,11 +19,11 @@
 	--base-color-black-050		: calc(var(--base-color-r) * 0.50), calc(var(--base-color-g) * 0.50), calc(var(--base-color-b) * 0.50);
 	--base-color-black-075		: calc(var(--base-color-r) * 0.25), calc(var(--base-color-g) * 0.25), calc(var(--base-color-b) * 0.25);
 
-	--table-header			: RGBA(0, 0, 0, 0.1);
+	--table-header			: RGBA(0, 0, 0, 0.10);
 	--table-header-opaque		: #E5E5E5;
 	--table-header-border		: #bbbbbb;
 	--table-border			: #cccccc;
-	--table-hover			: RGBA(var(--base-color), 0.1);
+	--table-hover			: RGBA(var(--base-color), 0.10);
 	--table-hover-header-opaque	: #CFE0E6;
 	--table-hover-opaque		: #E6F7FE;
 }
@@ -31,7 +31,7 @@
 	--application-font-color	: silver;
 	--application-background	: #101010;
 
-	--table-header			: RGBA(255, 255, 255, 0.1);
+	--table-header			: RGBA(255, 255, 255, 0.10);
 	--table-header-opaque		: #191919;
 	--table-header-border		: #555555;
 	--table-border			: #444444;
@@ -152,7 +152,7 @@ tr:hover{
 .colhover th:hover::after{
 	content			: "";
 	position		: absolute;
-	background-color	: RGBA(var(--base-color), 0.1);
+	background-color	: RGBA(var(--base-color), 0.10);
 	left			: 0;
 	top			: -5000px;
 	height			: 10000px;
@@ -205,7 +205,7 @@ header a:hover{
 }
 
 .dark textarea, .dark input{
-	background-color	: RGBA(255, 255, 255, 0.1);
+	background-color	: RGBA(255, 255, 255, 0.10);
 	color			: silver;
 }
 input[type="number"]{
@@ -577,6 +577,10 @@ table.stickyHeader tr td:last-child{
 #ViewerHeatmap td.rate{
 	text-align		: right;
 }
+#ViewerHeatmap tbody tr:hover td{
+	background-color	: RGBA(var(--base-color), 0.10);
+}
+
 
 #ViewerWritten_Table{
 	width			: var(--application-width);
