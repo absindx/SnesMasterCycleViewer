@@ -463,6 +463,8 @@ table.stickyHeader tr td:last-child{
 	margin			: 4px 8px;
 }
 #ViewerTimeline_Table{
+	width			: fit-content;
+	max-width		: 100%;
 	max-height		: calc(var(--result-content-height) - 4em);
 	overflow		: auto;
 }

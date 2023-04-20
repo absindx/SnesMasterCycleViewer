@@ -5416,6 +5416,7 @@ namespace Application{
 		private static HeatmapColor		= '204, 0, 0';	// #CC0000
 		private static HeatmapMaxIntensity	= 1.00;
 		private static TimelineGenerated	= false;
+		private static TimelineWarning		= 100000;
 
 		public static Initialize(){
 			Main.Assembled	= null;
@@ -5984,8 +5985,17 @@ namespace Application{
 
 				stepLength.push(step.GetExecuteCpuCycle());
 			}
-			if(timelineLogs.length <= 0){
+			let timelineRow	= 0;
+			timelineLogs.forEach(() => timelineRow++);
+			if(stepLength.length <= 0){
 				return;
+			}
+
+			const checkCell	= timelineRow * stepLength.length;
+			if(checkCell >= Main.TimelineWarning){
+				if(!window.confirm('Displays a very large table.\nIt may slow down your browser.\nIs it OK?')){
+					return;
+				}
 			}
 			DomUtility.RemoveCildren(tableBody);
 

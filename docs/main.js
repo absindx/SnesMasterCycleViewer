@@ -3210,6 +3210,14 @@ var Emulator;
             this.AccessLog = [];
             this.Source = null;
         }
+        GetInstructionLogString() {
+            let operand = this.GetFormattedOperand();
+            const noteIndex = operand.indexOf('@');
+            if (noteIndex >= 0) {
+                operand = operand.substring(0, noteIndex);
+            }
+            return `${Instruction[this.Instruction]} ${operand.trim()}`;
+        }
         GetLogString() {
             return `${Instruction[this.Instruction]} `
                 + `${Utility.Format.PadSpace(this.GetFormattedOperand(), 40)}`
@@ -4777,6 +4785,7 @@ var Application;
             return result;
         }
         static Assemble() {
+            Main.ResultEnable = false;
             Main.Assembled = null;
             Main.ClearResultViewer();
             const setting = Main.GetSetting();
@@ -4831,6 +4840,7 @@ var Application;
                     }
                 }
             }
+            Main.ResultEnable = true;
             Main.UpdateResultViewer(cpu);
         }
         static UploadChunk(memory, chunk) {
@@ -5106,8 +5116,6 @@ var Application;
                     written: ViewerMode.Written,
                 }, ViewerMode.TextLog);
             }
-            else {
-            }
             const viewerList = [
                 Main.Dom.ViewerTextLog,
                 Main.Dom.ViewerTableLog,
@@ -5120,6 +5128,13 @@ var Application;
             });
             let selectedDom = viewerList[selected];
             selectedDom.classList.remove('hide');
+            if (Main.ResultEnable) {
+                switch (selected) {
+                    case ViewerMode.Timeline:
+                        this.UpdateResultViewer_Timeline(Main.Cpu);
+                        break;
+                }
+            }
         }
         static CheckSelectedViewer(element) {
             element.addEventListener('change', (e) => {
@@ -5137,6 +5152,7 @@ var Application;
                 }
                 catch (_b) { }
             });
+            Main.TimelineGenerated = false;
         }
         static UpdateResultViewer(cpu) {
             Main.ClearResultViewer();
@@ -5149,6 +5165,7 @@ var Application;
                 }
                 catch (_b) { }
             });
+            Main.UpdateSelectedViewer();
         }
         static ClearResultViewer_TextLog() {
             Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
@@ -5170,8 +5187,127 @@ var Application;
         static UpdateResultViewer_TableLog(cpu) {
         }
         static ClearResultViewer_Timeline() {
+            const tableCols = 3;
+            const tableHeader = document.querySelectorAll('#ViewerTimeline_Table th');
+            if (!tableHeader) {
+                return;
+            }
+            for (let i = tableHeader.length - 1; tableCols <= i; i--) {
+                tableHeader.item(i).remove();
+            }
+            tableHeader[tableCols - 1].textContent = 'Timeline';
+            tableHeader[tableCols - 1].classList.add('dummyTimeline');
+            Main.ClearTableBody('#ViewerTimeline_Table', tableCols);
+            const tableBody = document.querySelector('#ViewerTimeline_Table tbody tr');
+            if (!tableBody) {
+                return;
+            }
+            tableBody.children[0].classList.add('sticky');
+            tableBody.children[1].classList.add('sticky');
         }
         static UpdateResultViewer_Timeline(cpu) {
+            var _b;
+            if (Main.TimelineGenerated) {
+                return;
+            }
+            const tableHeader = document.querySelector('#ViewerTimeline_Table thead tr');
+            if (!tableHeader) {
+                return;
+            }
+            const tableBody = document.querySelector('#ViewerTimeline_Table tbody');
+            if (!tableBody) {
+                return;
+            }
+            const timelineLogs = [];
+            const stepLength = [];
+            for (let s = 0; s < cpu.Logs.length; s++) {
+                const step = cpu.Logs[s];
+                const entry = (_b = timelineLogs[step.InstructionAddress]) !== null && _b !== void 0 ? _b : [];
+                entry.push(step);
+                timelineLogs[step.InstructionAddress] = entry;
+                stepLength.push(step.GetExecuteCpuCycle());
+            }
+            let timelineRow = 0;
+            timelineLogs.forEach(() => timelineRow++);
+            if (stepLength.length <= 0) {
+                return;
+            }
+            const checkCell = timelineRow * stepLength.length;
+            if (checkCell >= Main.TimelineWarning) {
+                if (!window.confirm('Displays a very large table.\nIt may slow down your browser.\nIs it OK?')) {
+                    return;
+                }
+            }
+            DomUtility.RemoveCildren(tableBody);
+            const tableCols = 2;
+            for (let i = tableHeader.children.length - 1; tableCols <= i; i--) {
+                tableHeader.children[i].remove();
+            }
+            let timelineHeaderCycle = 0;
+            for (let s = 0; s < stepLength.length; s++) {
+                const colTime = document.createElement('th');
+                tableHeader.appendChild(colTime);
+                colTime.classList.add('timeline');
+                colTime.classList.add('instructionStart');
+                colTime.setAttribute('colspan', stepLength[s].toString());
+                colTime.textContent = cpu.Logs[s].MasterCycle.toString();
+            }
+            function addRow(row) {
+                const address = row[0].InstructionAddress;
+                const code = row[0].GetInstructionLogString();
+                const tableRow = document.createElement('tr');
+                const colAddress = document.createElement('td');
+                colAddress.textContent = `$${Utility.Format.ToHexString(address, 6)}`;
+                colAddress.classList.add('sticky');
+                colAddress.classList.add('address');
+                tableRow.appendChild(colAddress);
+                const colCode = document.createElement('td');
+                colCode.textContent = code;
+                colCode.classList.add('sticky');
+                colCode.classList.add('code');
+                tableRow.appendChild(colCode);
+                let rowIndex = 0;
+                let nowCycle = 0;
+                for (let s = 0; s < stepLength.length; s++) {
+                    if ((row.length <= rowIndex) || (row[rowIndex].CpuCycle !== nowCycle)) {
+                        const colTime = document.createElement('td');
+                        tableRow.appendChild(colTime);
+                        colTime.classList.add('instructionStart');
+                        colTime.setAttribute('colspan', stepLength[s].toString());
+                    }
+                    else {
+                        const step = row[rowIndex];
+                        let instructionCycle = step.MasterCycle;
+                        for (let c = 0; c < step.AccessLog.length; c++) {
+                            const access = step.AccessLog[c];
+                            const colCycle = document.createElement('td');
+                            tableRow.appendChild(colCycle);
+                            colCycle.classList.add('data');
+                            colCycle.classList.add(Emulator.AccessType[access.Type]);
+                            colCycle.classList.add(Emulator.AccessSpeed[access.Cycle]);
+                            let tooltip = '';
+                            tooltip += `Cycle: ${instructionCycle}` + '\n';
+                            tooltip += `Access: ${Emulator.AccessType[access.Type]}` + '\n';
+                            tooltip += `Address: $${Utility.Format.ToHexString(access.AddressBus, 6)}` + '\n';
+                            tooltip += `Data: $${Utility.Format.ToHexString(access.DataBus, 2)}` + '\n';
+                            tooltip += `Region: ${Emulator.AccessRegion[access.Region]} @ ${Emulator.AccessSpeed[access.Cycle]}`;
+                            colCycle.setAttribute('title', tooltip);
+                            if (c === 0) {
+                                colCycle.classList.add('instructionStart');
+                            }
+                            instructionCycle += access.Cycle;
+                        }
+                        rowIndex++;
+                    }
+                    nowCycle += stepLength[s];
+                }
+                tableBody === null || tableBody === void 0 ? void 0 : tableBody.appendChild(tableRow);
+                return tableRow;
+            }
+            for (const key in timelineLogs) {
+                const row = addRow(timelineLogs[key]);
+            }
+            Main.TimelineGenerated = true;
         }
         static ClearResultViewer_Heatmap() {
             Main.ClearTableBody('#ViewerHeatmap_Table', 5);
@@ -5189,9 +5325,7 @@ var Application;
                         return heatmap[i];
                     }
                 }
-                let logString = stepLog.GetLogString();
-                logString = Utility.Format.RemoveAfter(logString, ';');
-                logString = Utility.Format.RemoveAfter(logString, '@').trim();
+                let logString = stepLog.GetInstructionLogString();
                 const entry = new Viewer_Heatmap_Log();
                 entry.Line = (_c = (_b = stepLog.Source) === null || _b === void 0 ? void 0 : _b.Line) !== null && _c !== void 0 ? _c : -1;
                 entry.Address = stepLog.InstructionAddress;
@@ -5377,8 +5511,11 @@ var Application;
         'ViewerHeatmap': Main.dummyNode,
         'ViewerWritten': Main.dummyNode,
     };
+    Main.ResultEnable = false;
     Main.HeatmapColor = '204, 0, 0';
     Main.HeatmapMaxIntensity = 1.00;
+    Main.TimelineGenerated = false;
+    Main.TimelineWarning = 100000;
     Main.ClearResultViewerFunctions = [
         Main.ClearResultViewer_TextLog,
         Main.ClearResultViewer_TableLog,
@@ -5389,7 +5526,6 @@ var Application;
     Main.UpdateResultViewerFunctions = [
         Main.UpdateResultViewer_TextLog,
         Main.UpdateResultViewer_TableLog,
-        Main.UpdateResultViewer_Timeline,
         Main.UpdateResultViewer_Heatmap,
         Main.UpdateResultViewer_Written,
     ];
