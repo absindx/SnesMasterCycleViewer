@@ -2,28 +2,39 @@
 /* @import url("code.css"); */
 
 :root{
-	--monospace-font	: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+	--monospace-font		: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 
-	--application-font-color: black;
-	--application-background: white;
-	--base-color		: #00AEEF;
+	--application-font-color	: black;
+	--application-background	: white;
 
-	--table-header		: RGBA(0, 0, 0, 0.1);
-	--table-header-opaque	: #E5E5E5;
-	--table-header-border	: #bbbbbb;
-	--table-border		: #cccccc;
-	--table-hover		: RGBA(0, 174, 239, 0.1);
+	--base-color-r			:   0;
+	--base-color-g			: 174;
+	--base-color-b			: 239;
+	--base-color			: var(--base-color-r), var(--base-color-g), var(--base-color-b);
+
+	--base-color-white-025		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.25), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.25), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.25);
+	--base-color-white-050		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.50), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.50), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.50);
+	--base-color-white-075		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.75), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.75), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.75);
+	--base-color-black-025		: calc(var(--base-color-r) * 0.75), calc(var(--base-color-g) * 0.75), calc(var(--base-color-b) * 0.75);
+	--base-color-black-050		: calc(var(--base-color-r) * 0.50), calc(var(--base-color-g) * 0.50), calc(var(--base-color-b) * 0.50);
+	--base-color-black-075		: calc(var(--base-color-r) * 0.25), calc(var(--base-color-g) * 0.25), calc(var(--base-color-b) * 0.25);
+
+	--table-header			: RGBA(0, 0, 0, 0.1);
+	--table-header-opaque		: #E5E5E5;
+	--table-header-border		: #bbbbbb;
+	--table-border			: #cccccc;
+	--table-hover			: RGBA(var(--base-color), 0.1);
 	--table-hover-header-opaque	: #CFE0E6;
 	--table-hover-opaque		: #E6F7FE;
 }
 :root .dark{
-	--application-font-color: silver;
-	--application-background: #101010;
+	--application-font-color	: silver;
+	--application-background	: #101010;
 
-	--table-header		: RGBA(255, 255, 255, 0.1);
-	--table-header-opaque	: #191919;
-	--table-header-border	: #555555;
-	--table-border		: #444444;
+	--table-header			: RGBA(255, 255, 255, 0.1);
+	--table-header-opaque		: #191919;
+	--table-header-border		: #555555;
+	--table-border			: #444444;
 	--table-hover-header-opaque	: #17272E;
 	--table-hover-opaque		: #0F1F26;
 }
@@ -42,24 +53,24 @@ h1, h2{
 h1{
 	margin			: 0px;
 	padding			: 4px 8px;
-	color			: #002C3C;
-	border-bottom		: 1px solid #00AEEF;
-	background-color	: RGBA(0, 174, 239, 0.25);
+	color			: RGB(var(--base-color-black-075));
+	border-bottom		: 1px solid RGB(var(--base-color));
+	background-color	: RGBA(var(--base-color), 0.25);
 	font-weight		: normal;
 }
 .dark h1, .dark h1 a{
-	color			: #BFEAFB;
+	color			: RGB(var(--base-color-white-075));
 }
 h2{
 	margin			: 8px 0px 4px;
 	padding-left		: 8px;
-	border-bottom		: 1px solid #00AEEF;
+	border-bottom		: 1px solid RGB(var(--base-color));
 	font-weight		: normal;
 }
 h3{
 	margin			: 8px 0px 4px;
 	padding-left		: 8px;
-	border-bottom		: 1px solid RGBA(0, 174, 239, 0.50);
+	border-bottom		: 1px solid RGBA(var(--base-color), 0.50);
 	font-weight		: normal;
 }
 h4{
@@ -105,13 +116,13 @@ a{
 	border-radius		: 4px;
 }
 a:link, a:visited{
-	color			: #0083B4;
+	color			: RGB(var(--base-color-black-025));
 }
 a[href]:hover{
-	background-color	: RGBA(0, 174, 239, 0.10);
+	background-color	: RGBA(var(--base-color), 0.10);
 }
 .dark a:link, .dark a:visited{
-	color			: #3FC2F3;
+	color			: RGB(var(--base-color-white-025));
 }
 
 img{
@@ -141,7 +152,7 @@ tr:hover{
 .colhover th:hover::after{
 	content			: "";
 	position		: absolute;
-	background-color	: RGBA(0, 174, 239, 0.1);
+	background-color	: RGBA(var(--base-color), 0.1);
 	left			: 0;
 	top			: -5000px;
 	height			: 10000px;
@@ -182,7 +193,7 @@ header{
 	text-align		: center;
 }
 header a:link{
-	color			: #002C3C;
+	color			: RGB(var(--base-color-black-075));
 	text-decoration		: none;
 }
 header a:hover{
@@ -190,7 +201,7 @@ header a:hover{
 	text-decoration		: underline;
 }
 .dark header a:link{
-	color			: #BFEAFB;
+	color			: RGB(var(--base-color-white-075));
 }
 
 .dark textarea, .dark input{
@@ -346,15 +357,15 @@ fieldset dl{
 }
 #ViewerSelect input + label{
 	display			: block;
-	border			: solid 1px #00AEEF;
-	background-color	: RGBA(0, 174, 239, 0.10);
+	border			: solid 1px RGB(var(--base-color));
+	background-color	: RGBA(var(--base-color), 0.10);
 	border-radius		: 4px;
 	margin			: 4px;
 	padding			: 4px 16px;
 	user-select		: none;
 }
 #ViewerSelect input[type="radio"]:checked + label{
-	background-color	: RGBA(0, 174, 239, 0.50);
+	background-color	: RGBA(var(--base-color), 0.50);
 	opacity			: 1.00;
 }
 #ViewerSelect label+input:checked{
@@ -511,6 +522,8 @@ table.stickyHeader tr td:last-child{
 #ViewerTimeline_Table th:not(.sticky),
 #ViewerTimeline_Table td:not(.sticky){
 	border-right		: none;
+}
+#ViewerTimeline_Table td:not(.sticky){
 	border-bottom		: none;
 }
 #ViewerTimeline_Table td:not(.sticky):not(.data){
