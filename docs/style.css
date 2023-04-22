@@ -4,46 +4,70 @@
 :root{
 	--monospace-font		: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 
-	--application-font-color	: black;
-	--application-background	: white;
+	--application-font-color-r	:   0;
+	--application-font-color-g	:   0;
+	--application-font-color-b	:   0;
+
+	--application-background-r	: 255;
+	--application-background-g	: 255;
+	--application-background-b	: 255;
 
 	--base-color-r			:   0;
 	--base-color-g			: 174;
 	--base-color-b			: 239;
-	--base-color			: var(--base-color-r), var(--base-color-g), var(--base-color-b);
 
-	--base-color-white-025		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.25), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.25), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.25);
-	--base-color-white-050		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.50), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.50), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.50);
-	--base-color-white-075		: calc(var(--base-color-r) + (255 - var(--base-color-r)) * 0.75), calc(var(--base-color-g) + (255 - var(--base-color-g)) * 0.75), calc(var(--base-color-b) + (255 - var(--base-color-b)) * 0.75);
+	--table-header			: RGBA(0, 0, 0, 0.10);
+	--table-header-opaque-ch	: calc(255 * 0.90);
+	--table-header-border		: 187, 187, 187;	/* #BBBBBB */
+	--table-border			: 204, 204, 204;	/* #CCCCCC */
+}
+:root .dark{
+	--application-font-color-r	: 192;
+	--application-font-color-g	: 192;
+	--application-font-color-b	: 192;
+
+	--application-background-r	:  16;
+	--application-background-g	:  16;
+	--application-background-b	:  16;
+
+	--table-header			: RGBA(255, 255, 255, 0.10);
+	--table-header-opaque-ch	: calc(255 * 0.10);
+	--table-header-border		:  85,  85,  85;	/* #555555 */
+	--table-border			:  68,  68,  68;	/* #444444 */
+}
+:root, :root .dark{
+	--application-font-color	: var(--application-font-color-r), var(--application-font-color-g), var(--application-font-color-b);
+	--application-background	: var(--application-background-r), var(--application-background-g), var(--application-background-b);
+
+	--base-color			: var(--base-color-r), var(--base-color-g), var(--base-color-b);
+	--base-color-white-025		: calc(var(--base-color-r) + ((255 - var(--base-color-r)) * 0.25)),
+					  calc(var(--base-color-g) + ((255 - var(--base-color-g)) * 0.25)),
+					  calc(var(--base-color-b) + ((255 - var(--base-color-b)) * 0.25));
+	--base-color-white-050		: calc(var(--base-color-r) + ((255 - var(--base-color-r)) * 0.50)),
+					  calc(var(--base-color-g) + ((255 - var(--base-color-g)) * 0.50)),
+					  calc(var(--base-color-b) + ((255 - var(--base-color-b)) * 0.50));
+	--base-color-white-075		: calc(var(--base-color-r) + ((255 - var(--base-color-r)) * 0.75)),
+					  calc(var(--base-color-g) + ((255 - var(--base-color-g)) * 0.75)),
+					  calc(var(--base-color-b) + ((255 - var(--base-color-b)) * 0.75));
 	--base-color-black-025		: calc(var(--base-color-r) * 0.75), calc(var(--base-color-g) * 0.75), calc(var(--base-color-b) * 0.75);
 	--base-color-black-050		: calc(var(--base-color-r) * 0.50), calc(var(--base-color-g) * 0.50), calc(var(--base-color-b) * 0.50);
 	--base-color-black-075		: calc(var(--base-color-r) * 0.25), calc(var(--base-color-g) * 0.25), calc(var(--base-color-b) * 0.25);
 
-	--table-header			: RGBA(0, 0, 0, 0.10);
-	--table-header-opaque		: #E5E5E5;
-	--table-header-border		: #bbbbbb;
-	--table-border			: #cccccc;
 	--table-hover			: RGBA(var(--base-color), 0.10);
-	--table-hover-header-opaque	: #CFE0E6;
-	--table-hover-opaque		: #E6F7FE;
-}
-:root .dark{
-	--application-font-color	: silver;
-	--application-background	: #101010;
-
-	--table-header			: RGBA(255, 255, 255, 0.10);
-	--table-header-opaque		: #191919;
-	--table-header-border		: #555555;
-	--table-border			: #444444;
-	--table-hover-header-opaque	: #17272E;
-	--table-hover-opaque		: #0F1F26;
+	--table-header-opaque		: var(--table-header-opaque-ch), var(--table-header-opaque-ch), var(--table-header-opaque-ch);
+	--table-hover-header-opaque	: calc(var(--base-color-r) + ((var(--table-header-opaque-ch)   - var(--base-color-r)) * 0.90)),
+					  calc(var(--base-color-g) + ((var(--table-header-opaque-ch)   - var(--base-color-g)) * 0.90)),
+					  calc(var(--base-color-b) + ((var(--table-header-opaque-ch)   - var(--base-color-b)) * 0.90));
+	--table-hover-opaque		: calc(var(--base-color-r) + ((var(--application-background-r) - var(--base-color-r)) * 0.90)),
+					  calc(var(--base-color-g) + ((var(--application-background-g) - var(--base-color-g)) * 0.90)),
+					  calc(var(--base-color-b) + ((var(--application-background-b) - var(--base-color-b)) * 0.90));
 }
 
 body{
 	margin			: 0px;
 	padding			: 0px;
-	color			: var(--application-font-color);
-	background		: var(--application-background);
+	color			: RGB(var(--application-font-color));
+	background		: RGB(var(--application-background));
 }
 
 h1, h2{
@@ -160,13 +184,13 @@ tr:hover{
 	z-index			: -1;
 }
 thead td, tr.head td, th{
-	border			: solid 1px var(--table-header-border);
+	border			: solid 1px RGB(var(--table-header-border));
 	background-color	: var(--table-header);
 	font-weight		: bold;
 	text-align		: center;
 }
 td{
-	border			: solid 1px var(--table-border);
+	border			: solid 1px RGB(var(--table-border));
 }
 td, th{
 	padding			: 2px 8px;
@@ -378,18 +402,19 @@ fieldset dl{
 }
 
 table.stickyHeader{
-	border			: solid 1px var(--table-border);
+	border			: solid 1px RGB(var(--table-border));
 	border-collapse		: separate;
 	border-spacing		: 0;
+	overflow		: auto;
 }
 table.stickyHeader th{
 	position		: sticky;
 	top			: 0;
-	background-color	: var(--table-header-opaque);
+	background-color	: RGB(var(--table-header-opaque));
 	z-index			: 1000;
 }
 table.stickyHeader tr:hover th{
-	background-color	: var(--table-hover-header-opaque);
+	background-color	: RGB(var(--table-hover-header-opaque));
 }
 table.stickyHeader th,
 table.stickyHeader td{
@@ -407,7 +432,9 @@ table.stickyHeader tr td:last-child{
 	border-right		: none;
 }
 
-
+#Result .stickyHeader{
+	max-height		: calc(var(--result-content-height) - 2em);
+}
 #ViewerTextLog_Log{
 	margin			: 16px auto;
 	width			: 144ch;
@@ -438,6 +465,8 @@ table.stickyHeader tr td:last-child{
 #ViewerTimeline td.data{
 	padding			: 0;
 	overflow		: hidden;
+	border-left		: dotted 1px RGB(var(--table-border));
+	box-sizing		: border-box;
 }
 #ViewerTimeline td.data:hover{
 /*
@@ -487,9 +516,10 @@ table.stickyHeader tr td:last-child{
 	min-width		: 96px;
 }
 #ViewerTimeline_Table th.code{
-	width			: 128px;
-	max-width		: 128px;
-	min-width		: 128px;
+	width			: 14ch;
+	max-width		: 14ch;
+	min-width		: 14ch;
+	overflow		: hidden;
 }
 #ViewerTimeline_Table th.timeline{
 	text-align		: left;
@@ -499,13 +529,13 @@ table.stickyHeader tr td:last-child{
 	width			: 100%;
 }
 #ViewerTimeline_Table td{
-	background		: var(--application-background);
+	background		: RGB(var(--application-background));
 }
 #ViewerTimeline_Table tr:hover th{
-	background-color	: var(--table-hover-header-opaque);
+	background-color	: RGB(var(--table-hover-header-opaque));
 }
 #ViewerTimeline_Table tr:hover td:not(.data){
-	background-color	: var(--table-hover-opaque);
+	background-color	: RGB(var(--table-hover-opaque));
 }
 #ViewerTimeline_Table td.address{
 	font-family		: var(--monospace-font);
@@ -532,7 +562,7 @@ table.stickyHeader tr td:last-child{
 	background		: none;
 }
 #ViewerTimeline_Table .instructionStart{
-	border-left		: dashed 1px var(--table-border);
+	border-left		: dashed 1px RGB(var(--table-border));
 }
 #ViewerTimeline_Table tr .instructionStart:nth-child(3){
 	border-left		: none;
@@ -540,8 +570,6 @@ table.stickyHeader tr td:last-child{
 
 #ViewerHeatmap_Table{
 	width			: var(--application-width);
-	max-height		: calc(var(--result-content-height) - 2em);
-	overflow		: auto;
 }
 
 #ViewerHeatmap th.line{
