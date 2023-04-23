@@ -494,8 +494,10 @@ table.stickyHeader tr td:last-child{
 #ViewerTimeline_Table{
 	width			: fit-content;
 	max-width		: 100%;
-	max-height		: calc(var(--result-content-height) - 4em);
 	overflow		: auto;
+}
+#ViewerTimeline_Table.stickyHeader{
+	max-height		: calc(var(--result-content-height) - 4em);
 }
 #ViewerTimeline_Table th{
 	max-width		: 0;

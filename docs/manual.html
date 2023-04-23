@@ -128,20 +128,21 @@
     <article>
      <h3>I/O Registers</h3>
        <table id="EmulationIORegisters">
-        <tr><th>Register</th				><th>Address</th			><th>Access</th			></tr>
-        <tr><td class="Register">M7A</td		><td class="Address">$211B</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">M7B</td		><td class="Address">$211C</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">MPYL</td		><td class="Address">$2134</td		><td class="Access">Read</td	></tr>
-        <tr><td class="Register">MPYM</td		><td class="Address">$2135</td		><td class="Access">Read</td	></tr>
-        <tr><td class="Register">MPYB</td		><td class="Address">$2136</td		><td class="Access">Read</td	></tr>
-        <tr><td class="Register">WRMPYA</td		><td class="Address">$4202</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">WRMPYB</td		><td class="Address">$4203</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">WRDIVL</td		><td class="Address">$4204</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">WRDIVH</td		><td class="Address">$4205</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">WRDIVB</td		><td class="Address">$4206</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">MEMSEL</td		><td class="Address">$420D</td		><td class="Access">Write</td	></tr>
-        <tr><td class="Register">RDMPYL</td		><td class="Address">$4216</td		><td class="Access">Read</td	></tr>
-        <tr><td class="Register">RDMPYH</td		><td class="Address">$4217</td		><td class="Access">Read</td	></tr>
+        <tr><th>Register</th				><th>Address</th			><th>Access</th				><th>Note</th					></tr>
+        <tr><td class="Register">M7A</td		><td class="Address">$211B</td		><td class="Access">Write</td		><td class="Note">for PPU multiplication</td	></tr>
+        <tr><td class="Register">M7B</td		><td class="Address">$211C</td		><td class="Access">Write</td		><td class="Note">for PPU multiplication</td	></tr>
+        <tr><td class="Register">MPYL</td		><td class="Address">$2134</td		><td class="Access">Read</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">MPYM</td		><td class="Address">$2135</td		><td class="Access">Read</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">MPYB</td		><td class="Address">$2136</td		><td class="Access">Read</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">WRMPYA</td		><td class="Address">$4202</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">WRMPYB</td		><td class="Address">$4203</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">WRDIVL</td		><td class="Address">$4204</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">WRDIVH</td		><td class="Address">$4205</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">WRDIVB</td		><td class="Address">$4206</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">MEMSEL</td		><td class="Address">$420D</td		><td class="Access">Write</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">RDMPYL</td		><td class="Address">$4216</td		><td class="Access">Read</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">RDMPYH</td		><td class="Address">$4217</td		><td class="Access">Read</td		><td class="Note"></td				></tr>
+        <tr><td class="Register">DMA parameters</td	><td class="Address">$43nX</td		><td class="Access">Read/Write</td	><td class="Note">for fast RAM</td		></tr>
        </table>
      </article>
      <article>
@@ -149,16 +150,193 @@
       <p>Does not emulate DRAM refresh to account for worst case cycle calculations.</p>
      </article>
    </section>
-   <section>
+   <section id="Sample">
     <h2>Sample</h2>
 
-    <article>
-     <h3>ToDo</h3>
-      <textarea id="AssemblerSource" rows="16" cols="80" wrap="off">		; TODO
-</textarea>
+     <article>
+     <h3><a href="/SnesMasterCycleViewer/?fr=0&sa=808000&src=MEMSEL%09%3D%20%24420D%0A%0A%09%09%3B.org%20%24808000%0A%09%09.m8%20.i8%0AStart%3A%0A%09%09LDA.b%09%2400%09%3B%20Slow%2CSlow%2CSlow%0A%0A%09%09LDA%09%23%2401%0A%09%09STA.w%09MEMSEL%09%3B%20enable%20FastROM%0A%0A%09%09LDA.b%09%2400%09%3B%20Fast%2CFast%2CSlow%0A%0A%09%09STP%0A">Manual FastROM change</a></h3>
+      <p>
+       Either change the start address or jump to the FastROM area.
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>MEMSEL	= $420D
 
+		;.org $808000
+		.m8 .i8
+Start:
+		LDA.b	$00	; Slow,Slow,Slow
+
+		LDA	#$01
+		STA.w	MEMSEL	; enable FastROM
+
+		LDA.b	$00	; Fast,Fast,Slow
+
+		STP
+</textarea>
      </article>
-   </section>
+
+     <article>
+     <h3><a href="/SnesMasterCycleViewer/?src=M7A%20%20%20%20%20%3D%20%24211B%0AM7B%20%20%20%20%20%3D%20%24211C%0AMPYL%20%20%20%20%3D%20%242134%0AMPYM%20%20%20%20%3D%20%242135%0AMPYH%20%20%20%20%3D%20%242136%0AWRMPYA%09%3D%20%244202%0AWRMPYB%09%3D%20%244203%0AWRDIVL%09%3D%20%244204%0AWRDIVH%09%3D%20%244205%0AWRDIVB%09%3D%20%244206%0ARDDIVL%09%3D%20%244214%0ARDDIVH%09%3D%20%244215%0ARDMPYL%09%3D%20%244216%0ARDMPYH%09%3D%20%244217%0A%0AStart%3A%0A.Result5A22MPY%09%3D%20%2400%0A.Result5A22DIV%09%3D%20%2404%0A.ResultPPUMPY%09%3D%20%2408%0A%0A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%0A%09%09%3B%205A22%20MPY%3A%20%24AA%20*%20%24BB%20%3D%20%247C2E%0A%09%09LDA%09%23%24AA%0A%09%09STA%09WRMPYA%0A%09%09LDA%09%23%24BB%0A%09%09STA%09WRMPYB%0A%09%09LDA%09RDMPYL%09%3B%20%204%20(dummy)%0A%09%09LDX%09RDMPYL%09%3B%20%208%0A%09%09STX%09.Result5A22MPY%0A%0A%09%09%3B%205A22%20DIV%3A%20%24AABB%20%2F%20100%20%3D%20%2401B5%20mod%20%240007%0A%09%09LDX%09%23%24AABB%0A%09%09STX%09WRDIVL%0A%09%09LDA%09%23100%0A%09%09STA%09WRDIVB%0A%09%09LDA%09RDDIVL%09%3B%20%204%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%20%208%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%2012%20(dummy)%0A%09%09LDX%09RDDIVL%09%3B%2016%0A%09%09LDY%09RDMPYL%09%3B%2021%0A%09%09STX%09.Result5A22DIV%20%2B%200%0A%09%09STY%09.Result5A22DIV%20%2B%202%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3B%20PPU%20MPY%3A%20%240123%20*%20%24AB%20%3D%20%24FF9F61%0A%09%09LDA%09%23%2401%0A%09%09STA%09M7A%0A%09%09LDA%09%23%2423%0A%09%09STA%09M7A%20%20%20%20%20%3B%20M7A%20%3D%20%24AABB%0A%09%09LDA%09%23%2455%0A%09%09STA%09M7B%0A%09%09LDA%09%23%24AB%0A%09%09STA%09M7B%09%3B%20M7B%20%3D%20%2455AB%20(%24AB)%0A%09%09LDA%09MPYL%0A%09%09LDX%09MPYM%0A%09%09LDY%09MPYH%0A%09%09STA%09.ResultPPUMPY%20%2B%200%0A%09%09STX%09.ResultPPUMPY%20%2B%201%0A%0A%09%09STP%0A&vm=Written">5A22 MPY, DIV and PPU MPY</a></h3>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>M7A     = $211B
+M7B     = $211C
+MPYL    = $2134
+MPYM    = $2135
+MPYH    = $2136
+WRMPYA	= $4202
+WRMPYB	= $4203
+WRDIVL	= $4204
+WRDIVH	= $4205
+WRDIVB	= $4206
+RDDIVL	= $4214
+RDDIVH	= $4215
+RDMPYL	= $4216
+RDMPYH	= $4217
+
+Start:
+.Result5A22MPY	= $00
+.Result5A22DIV	= $04
+.ResultPPUMPY	= $08
+
+		REP	#$10
+		.m8 .i16
+
+		; 5A22 MPY: $AA * $BB = $7C2E
+		LDA	#$AA
+		STA	WRMPYA
+		LDA	#$BB
+		STA	WRMPYB
+		LDA	RDMPYL	;  4 (dummy)
+		LDX	RDMPYL	;  8
+		STX	.Result5A22MPY
+
+		; 5A22 DIV: $AABB / 100 = $01B5 mod $0007
+		LDX	#$AABB
+		STX	WRDIVL
+		LDA	#100
+		STA	WRDIVB
+		LDA	RDDIVL	;  4 (dummy)
+		LDA	RDDIVL	;  8 (dummy)
+		LDA	RDDIVL	; 12 (dummy)
+		LDX	RDDIVL	; 16
+		LDY	RDMPYL	; 21
+		STX	.Result5A22DIV + 0
+		STY	.Result5A22DIV + 2
+
+                ; PPU MPY: $0123 * $AB = $FF9F61
+		LDA	#$01
+		STA	M7A
+		LDA	#$23
+		STA	M7A     ; M7A = $AABB
+		LDA	#$55
+		STA	M7B
+		LDA	#$AB
+		STA	M7B	; M7B = $55AB ($AB)
+		LDA	MPYL
+		LDX	MPYM
+		LDY	MPYH
+		STA	.ResultPPUMPY + 0
+		STX	.ResultPPUMPY + 1
+
+		STP
+</textarea>
+     </article>
+
+    <article>
+     <h3><a href="/SnesMasterCycleViewer/?sa=008000&src=%09%09.org%20%24008000%0A%09%09.m8%20.i8%0AL1%3A%0A.T%09%3D%20%2401%0A-%09%09LDA%09Target1%09%09%3B%20%24008000%3A%20AD%2008%2080%09%3B%20L2%20minus%0A%09%09LDA%09%23Target2%09%3B%20%24008003%3A%20A9%2001%0A%09%09LDA%09%23Target3%09%3B%20%24008005%3A%20A9%2002%09%3B%20L2%20.T%0AL2%3A%0A.T%09%3D%20%2402%0A%09%09NOP%09%09%09%3B%20%24008007%3A%20EA%0A-%09%09NOP%09%09%09%3B%20%24008008%3A%20EA%0A.a%09%09NOP%09%09%09%3B%20%24008009%3A%20EA%0A%09%09BEQ%09-%09%09%3B%20%2400800A%3A%20F0%20FC%0A%09%09STP%09%09%09%3B%20%2400800C%3A%20DB%0A%0A%3B%20Definition%20using%20L2%20scope%20local%20label%0ATarget1%09%3D%20-%09%09%3B%20%24008008%0ATarget2%09%3D%20.a%20-%20-%09%3B%20%24008009%20-%20%24008008%20%3D%20%2401%0ATarget3%09%3D%20.T%09%09%3B%20%2402">Definition using local labels</a></h3>
+      <p>
+       Local labels and local definitions within definitions are referenced from the defined scope.
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		;.org $008000
+		.m8 .i8
+L1:
+.T	= $01
+-		LDA	Target1		; $008000: AD 08 80	; L2 minus
+		LDA	#Target2	; $008003: A9 01
+		LDA	#Target3	; $008005: A9 02	; L2 .T
+L2:
+.T	= $02
+		NOP			; $008007: EA
+-		NOP			; $008008: EA
+.a		NOP			; $008009: EA
+		BEQ	-		; $00800A: F0 FC
+		STP			; $00800C: DB
+
+; Definition using L2 scope local label
+Target1	= -		; $008008
+Target2	= .a - -	; $008009 - $008008 = $01
+Target3	= .T		; $02
+</textarea>
+     </article>
+
+     <article>
+     <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%0A%09%09%3B%20Copy%20to%20RAM%0A%09%09LDX%09%23RamCodeLength%20-%201%0A-%09%09LDA%09RamCode%2C%20X%0A%09%09STA%09RamCodeAddress%2C%20X%0A%09%09DEX%0A%09%09BPL%09-%0A%0A%09%09%3B%20Change%20RAM%20code%20operand%0A%09%09LDA%09%23%24AA%0A%09%09STA%09RamCodeAddress%20%2B%201%0A%09%09LDA%09%23%24BB%0A%09%09STA%09RamCodeAddress%20%2B%204%0A%09%09LDA%09%23%24CC%0A%09%09STA%09RamCodeAddress%20%2B%203%0A%0A%09%09%3B%20Call%20RAM%20code%0A%09%09JSR%09RamCodeAddress%0A%0A%09%09STP%09%09%3B%20loooooooooooooooooooooooooooooong%20comment%0A%0ARamCode%3A%09LDA%09%23%2400%0A%09%09STA.w%09%240000%0A%09%09RTS%0A.End%0ARamCodeAddress%09%3D%20%241000%0ARamCodeLength%09%3D%20.End%20-%20RamCode%0A&vm=Heatmap">Heatmap not mapped to source code</a></h3>
+      <p>
+       The heatmap does not show line numbers for dynamic code in RAM.
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		.m8 .i8
+Start:
+		; Copy to RAM
+		LDX	#RamCodeLength - 1
+-		LDA	RamCode, X
+		STA	RamCodeAddress, X
+		DEX
+		BPL	-
+
+		; Change RAM code operand
+		LDA	#$AA
+		STA	RamCodeAddress + 1
+		LDA	#$BB
+		STA	RamCodeAddress + 4
+		LDA	#$CC
+		STA	RamCodeAddress + 3
+
+		; Call RAM code
+		JSR	RamCodeAddress
+
+		STP		; loooooooooooooooooooooooooooooong comment
+
+RamCode:	LDA	#$00
+		STA.w	$0000
+		RTS
+.End
+RamCodeAddress	= $1000
+RamCodeLength	= .End - RamCode
+</textarea>
+     </article>
+
+     <article>
+     <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDX%09%23%24AA%0A%09%09LDY%09%23%24FC%09%3B%20JSR%20(abs%2Cx)%0A%09%09NOP%09%09%3B%20address%20adjustment%20for%20pushing%20%2408%0A%09%09JSL%09%24015000%09%3B%20jump%20to%20openbus%0A%0A%09%09.org%09%2401BBBB%0AReturn%3A%09%09STP%09%09%3B%20return%20address%20from%20openbus%0A%0A%09%09.org%09%2405A6%09%3B%20%2404FC%20%2B%20%24AA%0A%09%09.dw%09Return%0A">Execute openbus</a></h3>
+      <p>
+       $00-3F,80-BF:2000-5FFF with no I/O registers, LoROM maps $00-3F,80-BF:6000-7FFF and HiROM maps $00-0F,80-8F:6000-7FFF as open buses.
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		.m8 .i8
+Start:		LDX	#$AA
+		JML	$015000	; jump to openbus
+
+		.org	$01BBBB
+Return:		STP		; return address from openbus
+
+		.org	$AB	; $01 + $AA
+		.dw	$2525	; AND dp
+
+		.org	$25
+		.dw	$FC	; JSR (abx, X)
+
+		.org	$06A6	; $05FC + $AA
+		.dw	Return
+</textarea>
+     </article>
+
+<!-- Template
+     <article>
+     <h3><a href="">TODO</a></h3>
+      <p>
+       
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		; TODO
+</textarea>
+     </article>
+-->
+    </section>
 
   </main>
 

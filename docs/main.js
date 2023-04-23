@@ -504,7 +504,7 @@ var Emulator;
                 log.EffectiveAddress = effectiveAddress;
                 yield* instructionFunction[1];
             }
-            function* AddressingAbsLong() {
+            function* AddressingAbsLong(waitFlag = true) {
                 const operand1Low = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1Low[1]);
                 yield;
@@ -514,7 +514,9 @@ var Emulator;
                 const operand1Bank = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1Bank[1]);
                 calculateInstructionLength();
-                yield;
+                if (waitFlag) {
+                    yield;
+                }
                 const operand1 = (operand1Bank[0].Data << 16) | (operand1High[0].Data << 8) | (operand1Low[0].Data);
                 log.Addressing = Addressing.AbsoluteLong;
                 log.Operand1 = operand1;
@@ -1882,7 +1884,7 @@ var Emulator;
                 [AddressingAbsIdxY(false), InstructionEOR()],
                 [AddressingStackPush(regs.GetRegisterY(), flagX), InstructionDummy(Instruction.PHY)],
                 [AddressingImplied(), InstructionTxx(Instruction.TCD, regs.GetRegisterA(true), 'D', false)],
-                [AddressingAbsLong(), InstructionJump(Instruction.JML, 0)],
+                [AddressingAbsLong(false), InstructionJump(Instruction.JML, 0)],
                 [AddressingAbsIdxX(false), InstructionEOR()],
                 [AddressingAbsIdxXRmw(), InstructionLSRMemory(Instruction.LSR, false)],
                 [AddressingLongIdxX(), InstructionEOR()],

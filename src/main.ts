@@ -597,7 +597,7 @@ namespace Emulator{
 
 				yield* instructionFunction[1];
 			}
-			function *AddressingAbsLong(){								// 04a, 04b: long
+			function *AddressingAbsLong(waitFlag: boolean = true){					// 04a, 04b: long
 				const operand1Low		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Low[1]);
 				yield;
@@ -609,7 +609,9 @@ namespace Emulator{
 				const operand1Bank		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1Bank[1]);
 				calculateInstructionLength();
-				yield;
+				if(waitFlag){
+					yield;
+				}
 
 				const operand1			= (operand1Bank[0].Data << 16) | (operand1High[0].Data << 8) | (operand1Low[0].Data);
 
@@ -2263,7 +2265,7 @@ namespace Emulator{
 				[AddressingAbsIdxY(false),				InstructionEOR()							],	// 59: EOR abs, Y
 				[AddressingStackPush(regs.GetRegisterY(), flagX),	InstructionDummy(Instruction.PHY)					],	// 5A: PHY S
 				[AddressingImplied(),					InstructionTxx(Instruction.TCD, regs.GetRegisterA(true), 'D', false)	],	// 5B: TCD
-				[AddressingAbsLong(),					InstructionJump(Instruction.JML, 0)					],	// 5C: JML long
+				[AddressingAbsLong(false),				InstructionJump(Instruction.JML, 0)					],	// 5C: JML long
 				[AddressingAbsIdxX(false),				InstructionEOR()							],	// 5D: EOR abs, X
 				[AddressingAbsIdxXRmw(),				InstructionLSRMemory(Instruction.LSR, false)				],	// 5E: LSR abs, X
 				[AddressingLongIdxX(),					InstructionEOR()							],	// 5F: EOR long, X
