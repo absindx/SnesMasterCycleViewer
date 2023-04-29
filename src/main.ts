@@ -201,6 +201,155 @@ namespace Utility{
 			return output;
 		}
 	}
+
+	export class StringCompression{
+		// LZSS based compression.
+		// cwww wwww wwww llll
+		// |||| |||| |||| ||||
+		// |||| |||| |||| ++++- (c=1) length
+		// |+++-++++-++++------ (c=1) slide window index
+		// +------------------- compression flag (c=0: raw ascii / c=1: compressed)
+
+		private static DictionaryHashLength	= 3;
+		private static CompressLength		= 3;
+		private static SlideWindowMaxHistory	= 2047;
+		private static TargetLength		= 15 + StringCompression.CompressLength;
+
+		public static Compress(input: string): string{
+			const asciiString	= StringCompression.EncodeToAscii(input);
+
+			let compressed: number[]	= [];
+			let caret			= 0;
+			const dictionary: {[key: string]: number[]}		= {};
+
+			function updateDictionary(){
+				const asciiIndex	= caret - StringCompression.DictionaryHashLength + 1;
+				let key	= asciiString.substring(asciiIndex, asciiIndex + StringCompression.DictionaryHashLength);
+				if(key.length < StringCompression.DictionaryHashLength){
+					return;
+				}
+				dictionary[key]		= dictionary[key] ?? [];
+				dictionary[key].push(caret - StringCompression.DictionaryHashLength + 1);
+			}
+			function matchLength(reference: string, referenceStart:number, search: string): number{
+				let i: number;
+				for(i = 0; i < search.length; i++){
+					const referenceIndex	= referenceStart + i;
+					if((reference.length <= referenceIndex) || (reference[referenceIndex] !== search[i])){
+						return i;
+					}
+				}
+				return i;
+			}
+
+			while(caret < asciiString.length){
+				const hashKey		= asciiString.substring(caret, caret + StringCompression.DictionaryHashLength);
+				const hashEntry		= dictionary[hashKey];
+				if(!hashEntry){
+					compressed.push(hashKey.charCodeAt(0));
+					updateDictionary();
+					caret++;
+					continue;
+				}
+				else{
+					const target		= asciiString.substring(caret, caret + StringCompression.TargetLength);
+					let mostMatchIndex	= hashEntry[hashEntry.length - 1];
+					let mostMatchLength	= matchLength(asciiString, hashEntry[hashEntry.length - 1], target);
+					for(let i = hashEntry.length - (StringCompression.DictionaryHashLength - 1); 0 <= i; i--){
+						const distance	= caret - hashEntry[i] - 1;
+						if(distance >= StringCompression.SlideWindowMaxHistory){
+							break;
+						}
+						let matchedLength	= matchLength(asciiString, hashEntry[i], target);
+						if(mostMatchLength < matchedLength){
+							mostMatchIndex	= hashEntry[i];
+							mostMatchLength	= matchedLength;
+						}
+					}
+
+					const distance	= caret - mostMatchIndex - 1;
+					if((distance >= StringCompression.SlideWindowMaxHistory) || (mostMatchLength < StringCompression.CompressLength)){
+						compressed.push(hashKey.charCodeAt(0));
+						updateDictionary();
+						caret++;
+						continue;
+					}
+
+					const windowIndex	= ((distance << 4) & 0x7FF0);
+					const windowLength	= ((mostMatchLength - StringCompression.CompressLength) & 0x000F);
+					const compressWord	= 0x8000 | windowIndex | windowLength;
+					compressed.push((compressWord >> 8) & 0xFF);
+					compressed.push((compressWord     ) & 0xFF);
+
+					for(let i = 0; i < mostMatchLength; i++){
+						updateDictionary();
+						caret++;
+					}
+				}
+			}
+
+			return StringCompression.ArrayToBase64(compressed);
+		}
+		public static Decompress(input: string): string | null{
+			const inputArray	= StringCompression.Base64ToArray(input);
+			let extracted		= '';
+			let caret		= 0;
+
+			while(caret < inputArray.length){
+				const c		= inputArray[caret];
+				caret++;
+
+				if(c < 0x80){
+					extracted	+= String.fromCharCode(c);
+					continue;
+				}
+
+				if(caret >= inputArray.length){
+					return null;
+				}
+				const c2	= inputArray[caret];
+				caret++;
+
+				const compressWord	= (c << 8) | c2;
+				const windowIndex	= ((compressWord & 0x7FF0) >> 4) + 1;					// 1 - 2049
+				const windowLength	=  (compressWord & 0x000F)       + StringCompression.CompressLength;	// 3 - 19
+
+				const startIndex	= extracted.length - windowIndex;
+				for(let i = 0; i < windowLength; i++){
+					extracted	+= extracted[startIndex + i] ?? '';
+				}
+			}
+
+			try{
+				return StringCompression.DecodeFromAscii(extracted);
+			}
+			catch{
+				return null;
+			}
+		}
+
+		private static EncodeToAscii(multiByte: string): string{
+			return encodeURIComponent(multiByte);
+		}
+		private static DecodeFromAscii(ascii: string): string{
+			return decodeURIComponent(ascii);
+		}
+		private static ArrayToBase64(data: number[]): string{
+			let b64string	= btoa(String.fromCharCode(...data));
+			return b64string;
+		}
+		private static Base64ToArray(data: string): number[]{
+			let byteArray: number[]	= [];
+
+			const decoded	= atob(data);
+			for(let i = 0; i < decoded.length; i++){
+				const c	= decoded.charCodeAt(i);
+				byteArray.push(c);
+			}
+
+			return byteArray;
+		}
+	}
 }
 
 //--------------------------------------------------
@@ -226,7 +375,7 @@ namespace Emulator{
 		public ResetRegisters: {[key: string]: number} | null	= null;
 
 		public constructor(
-			private Memory: Memory
+			private Memory: IMemory
 		){
 			this.Reset();
 		}
@@ -2489,7 +2638,7 @@ namespace Emulator{
 			}];
 		}
 		private WriteDataByte(accessType: AccessType, address: number, value: number): [MemoryWriteResult, AccessLog] {
-			const access	= this.Memory.WriteByte(address, value);
+			const access	= this.Memory.WriteByte(address, value, false);
 
 			return [access, {
 				AddressBus: address,
@@ -2799,7 +2948,16 @@ namespace Emulator{
 		}
 	};
 
-	export class Memory{
+	export interface IMemory{
+		AddressBus: number;
+		DataBus: number;
+
+		ReadByte(address: number): MemoryReadResult;
+		WriteByte(address: number, data: number, romWrite: boolean): MemoryWriteResult;
+
+		ClockIO(cycle: AccessSpeed): void;
+	}
+	export class SnesMemory implements IMemory{
 		private AddressSpace: {[Address: number]: number}			= {};
 		private SourceSpace: {[Address: number]: Assembler.SourceMapping}	= {};
 		ROMMapping: RomMapping	= RomMapping.LoROM;
@@ -3109,7 +3267,7 @@ namespace Emulator{
 			return this.Mode7Latch;
 		}
 
-		public ClockIO(cycle: AccessSpeed){
+		public ClockIO(cycle: AccessSpeed): void{
 			this.PpuRegister.Step();
 			this.CpuRegister.Step();
 		}
@@ -5389,7 +5547,7 @@ namespace Application{
 
 	export class Main{
 		private static Assembled: Assembler.DataChunk[] | null	= null;
-		private static Memory: Emulator.Memory			= new Emulator.Memory();
+		private static Memory: Emulator.SnesMemory		= new Emulator.SnesMemory();
 		private static Cpu: Emulator.Cpu			= new Emulator.Cpu(this.Memory);
 
 		private static dummyNode	= document.createElement('span');
@@ -5500,7 +5658,7 @@ namespace Application{
 		}
 
 		public static Run(){
-			const memory	= new Emulator.Memory();
+			const memory	= new Emulator.SnesMemory();
 			Main.Memory	= memory;
 
 			// Setting from form
@@ -5544,7 +5702,7 @@ namespace Application{
 			Main.UpdateResultViewer(cpu);
 		}
 
-		private static UploadChunk(memory: Emulator.Memory, chunk: Assembler.DataChunk){
+		private static UploadChunk(memory: Emulator.SnesMemory, chunk: Assembler.DataChunk){
 			for(let i = 0; i < chunk.Data.length; i++){
 				memory.WriteSourceByte(chunk.Address + i, chunk.Data[i], chunk.Source[i]);
 			}
@@ -5770,6 +5928,9 @@ namespace Application{
 					case 'src':
 						setting.Source			= Main.DecodeSource(value);
 						break;
+					case 'zsrc':
+						setting.Source			= Main.DecodeCompressedSource(value);
+						break;
 					case 'vm':{
 						for(let mode in ViewerMode){
 							const enumIndex	= parseInt(mode);
@@ -5806,7 +5967,16 @@ namespace Application{
 			url		+= `&esb=${ booleanToParameter(setting.EmulationStopBRK) }`;
 			url		+= `&esc=${ booleanToParameter(setting.EmulationStopCOP) }`;
 			url		+= `&esr=${ booleanToParameter(setting.EmulationStopWDM) }`;
-			url		+= `&src=${ Main.EncodeSource(setting.Source) }`;
+
+			const rawSource		= Main.EncodeSource(setting.Source);
+			const compressedSource	= Main.EncodeCompressedSource(setting.Source);
+			if(rawSource.length < compressedSource.length){
+				url		+= `&src=${ rawSource }`;
+			}
+			else{
+				url		+= `&zsrc=${ compressedSource }`;
+			}
+
 			//url		+= `&vm=${ ViewerMode[setting.ViewerMode] }`;
 
 			return url;
@@ -5819,6 +5989,19 @@ namespace Application{
 		private static DecodeSource(src: string): string{
 			const urlDecodedSource	= decodeURIComponent(src);
 			return urlDecodedSource;
+		}
+		private static EncodeCompressedSource(src: string): string{
+			let compressed	= Utility.StringCompression.Compress(src);
+			compressed	= compressed.replace(/\+/g, '-');
+			compressed	= compressed.replace(/\//g, '_');
+			compressed	= compressed.replace(/=+$/, '');
+			return compressed;
+		}
+		private static DecodeCompressedSource(src: string): string{
+			let compressed	= src;
+			compressed	= compressed.replace(/\-/g, '+');
+			compressed	= compressed.replace(/\_/g, '/');
+			return Utility.StringCompression.Decompress(compressed) ?? '';
 		}
 
 		private static DumpCpuLog(cpu: Emulator.Cpu){

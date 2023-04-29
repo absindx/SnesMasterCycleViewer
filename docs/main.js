@@ -182,6 +182,133 @@ var Utility;
         }
     }
     Utility.CharacterReadStream = CharacterReadStream;
+    class StringCompression {
+        static Compress(input) {
+            const asciiString = StringCompression.EncodeToAscii(input);
+            let compressed = [];
+            let caret = 0;
+            const dictionary = {};
+            function updateDictionary() {
+                var _a;
+                const asciiIndex = caret - StringCompression.DictionaryHashLength + 1;
+                let key = asciiString.substring(asciiIndex, asciiIndex + StringCompression.DictionaryHashLength);
+                if (key.length < StringCompression.DictionaryHashLength) {
+                    return;
+                }
+                dictionary[key] = (_a = dictionary[key]) !== null && _a !== void 0 ? _a : [];
+                dictionary[key].push(caret - StringCompression.DictionaryHashLength + 1);
+            }
+            function matchLength(reference, referenceStart, search) {
+                let i;
+                for (i = 0; i < search.length; i++) {
+                    const referenceIndex = referenceStart + i;
+                    if ((reference.length <= referenceIndex) || (reference[referenceIndex] !== search[i])) {
+                        return i;
+                    }
+                }
+                return i;
+            }
+            while (caret < asciiString.length) {
+                const hashKey = asciiString.substring(caret, caret + StringCompression.DictionaryHashLength);
+                const hashEntry = dictionary[hashKey];
+                if (!hashEntry) {
+                    compressed.push(hashKey.charCodeAt(0));
+                    updateDictionary();
+                    caret++;
+                    continue;
+                }
+                else {
+                    const target = asciiString.substring(caret, caret + StringCompression.TargetLength);
+                    let mostMatchIndex = hashEntry[hashEntry.length - 1];
+                    let mostMatchLength = matchLength(asciiString, hashEntry[hashEntry.length - 1], target);
+                    for (let i = hashEntry.length - (StringCompression.DictionaryHashLength - 1); 0 <= i; i--) {
+                        const distance = caret - hashEntry[i] - 1;
+                        if (distance >= StringCompression.SlideWindowMaxHistory) {
+                            break;
+                        }
+                        let matchedLength = matchLength(asciiString, hashEntry[i], target);
+                        if (mostMatchLength < matchedLength) {
+                            mostMatchIndex = hashEntry[i];
+                            mostMatchLength = matchedLength;
+                        }
+                    }
+                    const distance = caret - mostMatchIndex - 1;
+                    if ((distance >= StringCompression.SlideWindowMaxHistory) || (mostMatchLength < StringCompression.CompressLength)) {
+                        compressed.push(hashKey.charCodeAt(0));
+                        updateDictionary();
+                        caret++;
+                        continue;
+                    }
+                    const windowIndex = ((distance << 4) & 0x7FF0);
+                    const windowLength = ((mostMatchLength - StringCompression.CompressLength) & 0x000F);
+                    const compressWord = 0x8000 | windowIndex | windowLength;
+                    compressed.push((compressWord >> 8) & 0xFF);
+                    compressed.push((compressWord) & 0xFF);
+                    for (let i = 0; i < mostMatchLength; i++) {
+                        updateDictionary();
+                        caret++;
+                    }
+                }
+            }
+            return StringCompression.ArrayToBase64(compressed);
+        }
+        static Decompress(input) {
+            var _a;
+            const inputArray = StringCompression.Base64ToArray(input);
+            let extracted = '';
+            let caret = 0;
+            while (caret < inputArray.length) {
+                const c = inputArray[caret];
+                caret++;
+                if (c < 0x80) {
+                    extracted += String.fromCharCode(c);
+                    continue;
+                }
+                if (caret >= inputArray.length) {
+                    return null;
+                }
+                const c2 = inputArray[caret];
+                caret++;
+                const compressWord = (c << 8) | c2;
+                const windowIndex = ((compressWord & 0x7FF0) >> 4) + 1;
+                const windowLength = (compressWord & 0x000F) + StringCompression.CompressLength;
+                const startIndex = extracted.length - windowIndex;
+                for (let i = 0; i < windowLength; i++) {
+                    extracted += (_a = extracted[startIndex + i]) !== null && _a !== void 0 ? _a : '';
+                }
+            }
+            try {
+                return StringCompression.DecodeFromAscii(extracted);
+            }
+            catch (_b) {
+                return null;
+            }
+        }
+        static EncodeToAscii(multiByte) {
+            return encodeURIComponent(multiByte);
+        }
+        static DecodeFromAscii(ascii) {
+            return decodeURIComponent(ascii);
+        }
+        static ArrayToBase64(data) {
+            let b64string = btoa(String.fromCharCode(...data));
+            return b64string;
+        }
+        static Base64ToArray(data) {
+            let byteArray = [];
+            const decoded = atob(data);
+            for (let i = 0; i < decoded.length; i++) {
+                const c = decoded.charCodeAt(i);
+                byteArray.push(c);
+            }
+            return byteArray;
+        }
+    }
+    StringCompression.DictionaryHashLength = 3;
+    StringCompression.CompressLength = 3;
+    StringCompression.SlideWindowMaxHistory = 2047;
+    StringCompression.TargetLength = 15 + StringCompression.CompressLength;
+    Utility.StringCompression = StringCompression;
 })(Utility || (Utility = {}));
 var Emulator;
 (function (Emulator) {
@@ -2099,7 +2226,7 @@ var Emulator;
                 }];
         }
         WriteDataByte(accessType, address, value) {
-            const access = this.Memory.WriteByte(address, value);
+            const access = this.Memory.WriteByte(address, value, false);
             return [access, {
                     AddressBus: address,
                     DataBus: value,
@@ -2405,7 +2532,7 @@ var Emulator;
     }
     Emulator.Registers = Registers;
     ;
-    class Memory {
+    class SnesMemory {
         constructor() {
             this.AddressSpace = {};
             this.SourceSpace = {};
@@ -2689,7 +2816,7 @@ var Emulator;
             this.CpuRegister.Step();
         }
     }
-    Emulator.Memory = Memory;
+    Emulator.SnesMemory = SnesMemory;
     class CpuRegister {
         constructor() {
             this.NMITIMEN = 0;
@@ -4811,7 +4938,7 @@ var Application;
             Main.Assembled = assembled;
         }
         static Run() {
-            const memory = new Emulator.Memory();
+            const memory = new Emulator.SnesMemory();
             Main.Memory = memory;
             const setting = Main.GetSetting();
             memory.ROMMapping = setting.RomMapping;
@@ -5055,6 +5182,9 @@ var Application;
                     case 'src':
                         setting.Source = Main.DecodeSource(value);
                         break;
+                    case 'zsrc':
+                        setting.Source = Main.DecodeCompressedSource(value);
+                        break;
                     case 'vm': {
                         for (let mode in ViewerMode) {
                             const enumIndex = parseInt(mode);
@@ -5087,7 +5217,14 @@ var Application;
             url += `&esb=${booleanToParameter(setting.EmulationStopBRK)}`;
             url += `&esc=${booleanToParameter(setting.EmulationStopCOP)}`;
             url += `&esr=${booleanToParameter(setting.EmulationStopWDM)}`;
-            url += `&src=${Main.EncodeSource(setting.Source)}`;
+            const rawSource = Main.EncodeSource(setting.Source);
+            const compressedSource = Main.EncodeCompressedSource(setting.Source);
+            if (rawSource.length < compressedSource.length) {
+                url += `&src=${rawSource}`;
+            }
+            else {
+                url += `&zsrc=${compressedSource}`;
+            }
             return url;
         }
         static EncodeSource(src) {
@@ -5097,6 +5234,20 @@ var Application;
         static DecodeSource(src) {
             const urlDecodedSource = decodeURIComponent(src);
             return urlDecodedSource;
+        }
+        static EncodeCompressedSource(src) {
+            let compressed = Utility.StringCompression.Compress(src);
+            compressed = compressed.replace(/\+/g, '-');
+            compressed = compressed.replace(/\//g, '_');
+            compressed = compressed.replace(/=+$/, '');
+            return compressed;
+        }
+        static DecodeCompressedSource(src) {
+            var _b;
+            let compressed = src;
+            compressed = compressed.replace(/\-/g, '+');
+            compressed = compressed.replace(/\_/g, '/');
+            return (_b = Utility.StringCompression.Decompress(compressed)) !== null && _b !== void 0 ? _b : '';
         }
         static DumpCpuLog(cpu) {
             for (let i = 0; i < cpu.Logs.length; i++) {
@@ -5490,7 +5641,7 @@ var Application;
     }
     _a = Main;
     Main.Assembled = null;
-    Main.Memory = new Emulator.Memory();
+    Main.Memory = new Emulator.SnesMemory();
     Main.Cpu = new Emulator.Cpu(_a.Memory);
     Main.dummyNode = document.createElement('span');
     Main.dummyInputNode = document.createElement('input');
