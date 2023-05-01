@@ -3509,19 +3509,19 @@ namespace Emulator{
 		}
 		public WriteRegister(registerNumber: number, value: number){
 			switch(registerNumber){
-				case 0x00:	this.DMAPn	= value;
-				case 0x01:	this.BBADn	= value;
-				case 0x02:	this.A1TnL	= value;
-				case 0x03:	this.A1TnH	= value;
-				case 0x04:	this.A1Bn	= value;
-				case 0x05:	this.DASnL	= value;
-				case 0x06:	this.DASnH	= value;
-				case 0x07:	this.DASBn	= value;
-				case 0x08:	this.A2AnL	= value;
-				case 0x09:	this.A2AnH	= value;
-				case 0x0A:	this.NLTRn	= value;
-				case 0x0B:	this.UNUSEDn	= value;
-				case 0x0F:	this.UNUSEDn	= value;
+				case 0x00:	this.DMAPn	= value;	break;
+				case 0x01:	this.BBADn	= value;	break;
+				case 0x02:	this.A1TnL	= value;	break;
+				case 0x03:	this.A1TnH	= value;	break;
+				case 0x04:	this.A1Bn	= value;	break;
+				case 0x05:	this.DASnL	= value;	break;
+				case 0x06:	this.DASnH	= value;	break;
+				case 0x07:	this.DASBn	= value;	break;
+				case 0x08:	this.A2AnL	= value;	break;
+				case 0x09:	this.A2AnH	= value;	break;
+				case 0x0A:	this.NLTRn	= value;	break;
+				case 0x0B:	this.UNUSEDn	= value;	break;
+				case 0x0F:	this.UNUSEDn	= value;	break;
 			}
 		}
 	}

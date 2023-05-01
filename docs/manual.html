@@ -125,8 +125,8 @@
    <section>
     <h2>Emulation</h2>
 
-    <article>
-     <h3>I/O Registers</h3>
+     <article>
+      <h3>I/O Registers</h3>
        <table id="EmulationIORegisters">
         <tr><th>Register</th				><th>Address</th			><th>Access</th				><th>Note</th					></tr>
         <tr><td class="Register">M7A</td		><td class="Address">$211B</td		><td class="Access">Write</td		><td class="Note">for PPU multiplication</td	></tr>
@@ -154,7 +154,52 @@
     <h2>Sample</h2>
 
      <article>
-     <h3><a href="/SnesMasterCycleViewer/?fr=0&sa=808000&src=MEMSEL%09%3D%20%24420D%0A%0A%09%09%3B.org%20%24808000%0A%09%09.m8%20.i8%0AStart%3A%0A%09%09LDA.b%09%2400%09%3B%20Slow%2CSlow%2CSlow%0A%0A%09%09LDA%09%23%2401%0A%09%09STA.w%09MEMSEL%09%3B%20enable%20FastROM%0A%0A%09%09LDA.b%09%2400%09%3B%20Fast%2CFast%2CSlow%0A%0A%09%09STP%0A">Manual FastROM change</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDY%09%23%2400%0A%0A%09%09LDA%09Target1%09%09%3B%20A%20%3D%20%24AA%0A%09%09LDA%09(Target2)%2C%20Y%09%3B%20A%20%3D%20%24BB%0A%09%09STP%0A%0A%09%09.org%09%240111%0ATarget1%3A%09.db%09%24AA%0A%0A%09%09.org%09%240022%0ATarget2%3A%09.dw%09.Pointer%0A%0A%09%09.org%09%240333%0A.Pointer%09.db%09%24BB%0A">Initialized memory</a></h3>
+      <p>
+       Set the address of the RAM with the .org directive to give an initial value.
+      </p>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		.m8 .i8
+Start:		LDY	#$00
+
+		LDA	Target1		; A = $AA
+		LDA	(Target2), Y	; A = $BB
+		STP
+
+		.org	$0111
+Target1:	.db	$AA
+
+		.org	$0022
+Target2:	.dw	.Pointer
+
+		.org	$0333
+.Pointer	.db	$BB
+</textarea>
+     </article>
+
+     <article>
+      <h3><a href="/SnesMasterCycleViewer/?sa=008000&mc=20000&src=Start%3A%09%09REP%09%23%2430%0A%09%09.m16%20.i16%0A%0A%09%09%3B%20Copy%20%24008000%20to%20%24000000%2C%20%24123%20bytes%0A%09%09LDA%09%23%24123%0A%09%09LDX%09%23%248000%0A%09%09LDY%09%23%240000%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20MVP%09Start%3E%3E16%2C%20%2400%09%3B%20src%2C%20dst%0A%0A%09%09LDA%09%240123%09%09%3B%20A%20%3D%20%24BBAA%0A%09%09STP%0A%0A%09%09.org%09%24008123%0A%09%09.db%09%24AA%2C%20%24EE%0A%0A%09%09.org%09%240123%0A%09%09.db%09%24FF%2C%20%24BB%0A">Block move</a></h3>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>Start:		REP	#$30
+		.m16 .i16
+
+		; Copy $008000 to $000000, $123 bytes
+		LDA	#$123
+		LDX	#$8000
+		LDY	#$0000
+                MVP	Start>>16, $00	; src, dst
+
+		LDA	$0123		; A = $BBAA
+		STP
+
+		.org	$008123
+		.db	$AA, $EE
+
+		.org	$0123
+		.db	$FF, $BB
+</textarea>
+     </article>
+
+     <article>
+      <h3><a href="/SnesMasterCycleViewer/?fr=0&sa=808000&src=MEMSEL%09%3D%20%24420D%0A%0A%09%09%3B.org%20%24808000%0A%09%09.m8%20.i8%0AStart%3A%09%09LDA.b%09%2400%09%3B%20Slow%2CSlow%2CSlow%0A%0A%09%09LDA%09%23%2401%0A%09%09STA.w%09MEMSEL%09%3B%20enable%20FastROM%0A%0A%09%09LDA.b%09%2400%09%3B%20Fast%2CFast%2CSlow%0A%0A%09%09STP%0A">Manual FastROM change</a></h3>
       <p>
        Either change the start address or jump to the FastROM area.
       </p>
@@ -162,8 +207,7 @@
 
 		;.org $808000
 		.m8 .i8
-Start:
-		LDA.b	$00	; Slow,Slow,Slow
+Start:		LDA.b	$00	; Slow,Slow,Slow
 
 		LDA	#$01
 		STA.w	MEMSEL	; enable FastROM
@@ -175,7 +219,30 @@ Start:
      </article>
 
      <article>
-     <h3><a href="/SnesMasterCycleViewer/?src=M7A%20%20%20%20%20%3D%20%24211B%0AM7B%20%20%20%20%20%3D%20%24211C%0AMPYL%20%20%20%20%3D%20%242134%0AMPYM%20%20%20%20%3D%20%242135%0AMPYH%20%20%20%20%3D%20%242136%0AWRMPYA%09%3D%20%244202%0AWRMPYB%09%3D%20%244203%0AWRDIVL%09%3D%20%244204%0AWRDIVH%09%3D%20%244205%0AWRDIVB%09%3D%20%244206%0ARDDIVL%09%3D%20%244214%0ARDDIVH%09%3D%20%244215%0ARDMPYL%09%3D%20%244216%0ARDMPYH%09%3D%20%244217%0A%0AStart%3A%0A.Result5A22MPY%09%3D%20%2400%0A.Result5A22DIV%09%3D%20%2404%0A.ResultPPUMPY%09%3D%20%2408%0A%0A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%0A%09%09%3B%205A22%20MPY%3A%20%24AA%20*%20%24BB%20%3D%20%247C2E%0A%09%09LDA%09%23%24AA%0A%09%09STA%09WRMPYA%0A%09%09LDA%09%23%24BB%0A%09%09STA%09WRMPYB%0A%09%09LDA%09RDMPYL%09%3B%20%204%20(dummy)%0A%09%09LDX%09RDMPYL%09%3B%20%208%0A%09%09STX%09.Result5A22MPY%0A%0A%09%09%3B%205A22%20DIV%3A%20%24AABB%20%2F%20100%20%3D%20%2401B5%20mod%20%240007%0A%09%09LDX%09%23%24AABB%0A%09%09STX%09WRDIVL%0A%09%09LDA%09%23100%0A%09%09STA%09WRDIVB%0A%09%09LDA%09RDDIVL%09%3B%20%204%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%20%208%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%2012%20(dummy)%0A%09%09LDX%09RDDIVL%09%3B%2016%0A%09%09LDY%09RDMPYL%09%3B%2021%0A%09%09STX%09.Result5A22DIV%20%2B%200%0A%09%09STY%09.Result5A22DIV%20%2B%202%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3B%20PPU%20MPY%3A%20%240123%20*%20%24AB%20%3D%20%24FF9F61%0A%09%09LDA%09%23%2401%0A%09%09STA%09M7A%0A%09%09LDA%09%23%2423%0A%09%09STA%09M7A%20%20%20%20%20%3B%20M7A%20%3D%20%24AABB%0A%09%09LDA%09%23%2455%0A%09%09STA%09M7B%0A%09%09LDA%09%23%24AB%0A%09%09STA%09M7B%09%3B%20M7B%20%3D%20%2455AB%20(%24AB)%0A%09%09LDA%09MPYL%0A%09%09LDX%09MPYM%0A%09%09LDY%09MPYH%0A%09%09STA%09.ResultPPUMPY%20%2B%200%0A%09%09STX%09.ResultPPUMPY%20%2B%201%0A%0A%09%09STP%0A&vm=Written">5A22 MPY, DIV and PPU MPY</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=DMAP0%09%09%3D%20%244300%0ADMAUNKNOWN7B%09%3D%20%24437B%0ADMAUNKNOWN7F%09%3D%20%24437F%0A%0AStart%3A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%09%09%0A%09%09LDX%09%23DMAUNKNOWN7B%0A%09%09TXS%09%09%3B%20S%20%3D%20%24437B%0A%0A%09%09JSR%09Sub%0A%09%09STP%0A%0ASub%3A%0A%09%09%3B%20Mirrored%20fast%20RAM%0A%09%09LDA%09DMAUNKNOWN7F%0A%09%09STA%09DMAUNKNOWN7B%0A%09%09RTS%0A">DMA registers as fast RAM</a></h3>
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>DMAP0		= $4300
+DMAUNKNOWN7B	= $437B
+DMAUNKNOWN7F	= $437F
+
+Start:		REP	#$10
+		.m8 .i16
+		
+		LDX	#DMAUNKNOWN7B
+		TXS		; S = $437B
+
+		JSR	Sub
+		STP
+
+Sub:
+		; Mirrored fast RAM
+		LDA	DMAUNKNOWN7F
+		STA	DMAUNKNOWN7B
+		RTS
+</textarea>
+     </article>
+
+     <article>
+      <h3><a href="/SnesMasterCycleViewer/?src=M7A%20%20%20%20%20%3D%20%24211B%0AM7B%20%20%20%20%20%3D%20%24211C%0AMPYL%20%20%20%20%3D%20%242134%0AMPYM%20%20%20%20%3D%20%242135%0AMPYH%20%20%20%20%3D%20%242136%0AWRMPYA%09%3D%20%244202%0AWRMPYB%09%3D%20%244203%0AWRDIVL%09%3D%20%244204%0AWRDIVH%09%3D%20%244205%0AWRDIVB%09%3D%20%244206%0ARDDIVL%09%3D%20%244214%0ARDDIVH%09%3D%20%244215%0ARDMPYL%09%3D%20%244216%0ARDMPYH%09%3D%20%244217%0A%0AStart%3A%0A.Result5A22MPY%09%3D%20%2400%0A.Result5A22DIV%09%3D%20%2404%0A.ResultPPUMPY%09%3D%20%2408%0A%0A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%0A%09%09%3B%205A22%20MPY%3A%20%24AA%20*%20%24BB%20%3D%20%247C2E%0A%09%09LDA%09%23%24AA%0A%09%09STA%09WRMPYA%0A%09%09LDA%09%23%24BB%0A%09%09STA%09WRMPYB%0A%09%09LDA%09RDMPYL%09%3B%20%204%20(dummy)%0A%09%09LDX%09RDMPYL%09%3B%20%208%0A%09%09STX%09.Result5A22MPY%0A%0A%09%09%3B%205A22%20DIV%3A%20%24AABB%20%2F%20100%20%3D%20%2401B5%20mod%20%240007%0A%09%09LDX%09%23%24AABB%0A%09%09STX%09WRDIVL%0A%09%09LDA%09%23100%0A%09%09STA%09WRDIVB%0A%09%09LDA%09RDDIVL%09%3B%20%204%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%20%208%20(dummy)%0A%09%09LDA%09RDDIVL%09%3B%2012%20(dummy)%0A%09%09LDX%09RDDIVL%09%3B%2016%0A%09%09LDY%09RDMPYL%09%3B%2021%0A%09%09STX%09.Result5A22DIV%20%2B%200%0A%09%09STY%09.Result5A22DIV%20%2B%202%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%3B%20PPU%20MPY%3A%20%240123%20*%20%24AB%20%3D%20%24FF9F61%0A%09%09LDA%09%23%2401%0A%09%09STA%09M7A%0A%09%09LDA%09%23%2423%0A%09%09STA%09M7A%20%20%20%20%20%3B%20M7A%20%3D%20%24AABB%0A%09%09LDA%09%23%2455%0A%09%09STA%09M7B%0A%09%09LDA%09%23%24AB%0A%09%09STA%09M7B%09%3B%20M7B%20%3D%20%2455AB%20(%24AB)%0A%09%09LDA%09MPYL%0A%09%09LDX%09MPYM%0A%09%09LDY%09MPYH%0A%09%09STA%09.ResultPPUMPY%20%2B%200%0A%09%09STX%09.ResultPPUMPY%20%2B%201%0A%0A%09%09STP%0A&vm=Written">5A22 MPY, DIV and PPU MPY</a></h3>
       <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>M7A     = $211B
 M7B     = $211C
 MPYL    = $2134
@@ -240,8 +307,8 @@ Start:
 </textarea>
      </article>
 
-    <article>
-     <h3><a href="/SnesMasterCycleViewer/?sa=008000&src=%09%09.org%20%24008000%0A%09%09.m8%20.i8%0AL1%3A%0A.T%09%3D%20%2401%0A-%09%09LDA%09Target1%09%09%3B%20%24008000%3A%20AD%2008%2080%09%3B%20L2%20minus%0A%09%09LDA%09%23Target2%09%3B%20%24008003%3A%20A9%2001%0A%09%09LDA%09%23Target3%09%3B%20%24008005%3A%20A9%2002%09%3B%20L2%20.T%0AL2%3A%0A.T%09%3D%20%2402%0A%09%09NOP%09%09%09%3B%20%24008007%3A%20EA%0A-%09%09NOP%09%09%09%3B%20%24008008%3A%20EA%0A.a%09%09NOP%09%09%09%3B%20%24008009%3A%20EA%0A%09%09BEQ%09-%09%09%3B%20%2400800A%3A%20F0%20FC%0A%09%09STP%09%09%09%3B%20%2400800C%3A%20DB%0A%0A%3B%20Definition%20using%20L2%20scope%20local%20label%0ATarget1%09%3D%20-%09%09%3B%20%24008008%0ATarget2%09%3D%20.a%20-%20-%09%3B%20%24008009%20-%20%24008008%20%3D%20%2401%0ATarget3%09%3D%20.T%09%09%3B%20%2402">Definition using local labels</a></h3>
+     <article>
+      <h3><a href="/SnesMasterCycleViewer/?sa=008000&src=%09%09.org%20%24008000%0A%09%09.m8%20.i8%0AL1%3A%0A.T%09%3D%20%2401%0A-%09%09LDA%09Target1%09%09%3B%20%24008000%3A%20AD%2008%2080%09%3B%20L2%20minus%0A%09%09LDA%09%23Target2%09%3B%20%24008003%3A%20A9%2001%0A%09%09LDA%09%23Target3%09%3B%20%24008005%3A%20A9%2002%09%3B%20L2%20.T%0AL2%3A%0A.T%09%3D%20%2402%0A%09%09NOP%09%09%09%3B%20%24008007%3A%20EA%0A-%09%09NOP%09%09%09%3B%20%24008008%3A%20EA%0A.a%09%09NOP%09%09%09%3B%20%24008009%3A%20EA%0A%09%09BEQ%09-%09%09%3B%20%2400800A%3A%20F0%20FC%0A%09%09STP%09%09%09%3B%20%2400800C%3A%20DB%0A%0A%3B%20Definition%20using%20L2%20scope%20local%20label%0ATarget1%09%3D%20-%09%09%3B%20%24008008%0ATarget2%09%3D%20.a%20-%20-%09%3B%20%24008009%20-%20%24008008%20%3D%20%2401%0ATarget3%09%3D%20.T%09%09%3B%20%2402">Definition using local labels</a></h3>
       <p>
        Local labels and local definitions within definitions are referenced from the defined scope.
       </p>
@@ -268,7 +335,7 @@ Target3	= .T		; $02
      </article>
 
      <article>
-     <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%0A%09%09%3B%20Copy%20to%20RAM%0A%09%09LDX%09%23RamCodeLength%20-%201%0A-%09%09LDA%09RamCode%2C%20X%0A%09%09STA%09RamCodeAddress%2C%20X%0A%09%09DEX%0A%09%09BPL%09-%0A%0A%09%09%3B%20Change%20RAM%20code%20operand%0A%09%09LDA%09%23%24AA%0A%09%09STA%09RamCodeAddress%20%2B%201%0A%09%09LDA%09%23%24BB%0A%09%09STA%09RamCodeAddress%20%2B%204%0A%09%09LDA%09%23%24CC%0A%09%09STA%09RamCodeAddress%20%2B%203%0A%0A%09%09%3B%20Call%20RAM%20code%0A%09%09JSR%09RamCodeAddress%0A%0A%09%09STP%09%09%3B%20loooooooooooooooooooooooooooooong%20comment%0A%0ARamCode%3A%09LDA%09%23%2400%0A%09%09STA.w%09%240000%0A%09%09RTS%0A.End%0ARamCodeAddress%09%3D%20%241000%0ARamCodeLength%09%3D%20.End%20-%20RamCode%0A&vm=Heatmap">Heatmap not mapped to source code</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%0A%09%09%3B%20Copy%20to%20RAM%0A%09%09LDX%09%23RamCodeLength%20-%201%0A-%09%09LDA%09RamCode%2C%20X%0A%09%09STA%09RamCodeAddress%2C%20X%0A%09%09DEX%0A%09%09BPL%09-%0A%0A%09%09%3B%20Change%20RAM%20code%20operand%0A%09%09LDA%09%23%24AA%0A%09%09STA%09RamCodeAddress%20%2B%201%0A%09%09LDA%09%23%24BB%0A%09%09STA%09RamCodeAddress%20%2B%204%0A%09%09LDA%09%23%24CC%0A%09%09STA%09RamCodeAddress%20%2B%203%0A%0A%09%09%3B%20Call%20RAM%20code%0A%09%09JSR%09RamCodeAddress%0A%0A%09%09STP%09%09%3B%20loooooooooooooooooooooooooooooong%20comment%0A%0ARamCode%3A%09LDA%09%23%2400%0A%09%09STA.w%09%240000%0A%09%09RTS%0A.End%0ARamCodeAddress%09%3D%20%241000%0ARamCodeLength%09%3D%20.End%20-%20RamCode%0A&vm=Heatmap">Heatmap not mapped to source code</a></h3>
       <p>
        The heatmap does not show line numbers for dynamic code in RAM.
       </p>
@@ -304,7 +371,7 @@ RamCodeLength	= .End - RamCode
      </article>
 
      <article>
-     <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDX%09%23%24AA%0A%09%09LDY%09%23%24FC%09%3B%20JSR%20(abs%2Cx)%0A%09%09NOP%09%09%3B%20address%20adjustment%20for%20pushing%20%2408%0A%09%09JSL%09%24015000%09%3B%20jump%20to%20openbus%0A%0A%09%09.org%09%2401BBBB%0AReturn%3A%09%09STP%09%09%3B%20return%20address%20from%20openbus%0A%0A%09%09.org%09%2405A6%09%3B%20%2404FC%20%2B%20%24AA%0A%09%09.dw%09Return%0A">Execute openbus</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDX%09%23%24AA%0A%09%09LDY%09%23%24FC%09%3B%20JSR%20(abs%2Cx)%0A%09%09NOP%09%09%3B%20address%20adjustment%20for%20pushing%20%2408%0A%09%09JSL%09%24015000%09%3B%20jump%20to%20openbus%0A%0A%09%09.org%09%2401BBBB%0AReturn%3A%09%09STP%09%09%3B%20return%20address%20from%20openbus%0A%0A%09%09.org%09%2405A6%09%3B%20%2404FC%20%2B%20%24AA%0A%09%09.dw%09Return%0A">Execute openbus</a></h3>
       <p>
        $00-3F,80-BF:2000-5FFF with no I/O registers, LoROM maps $00-3F,80-BF:6000-7FFF and HiROM maps $00-0F,80-8F:6000-7FFF as open buses.
       </p>
@@ -328,11 +395,11 @@ Return:		STP		; return address from openbus
 
 <!-- Template
      <article>
-     <h3><a href="">TODO</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/"></a></h3>
       <p>
        
       </p>
-      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>		; TODO
+      <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>
 </textarea>
      </article>
 -->
