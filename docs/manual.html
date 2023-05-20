@@ -177,7 +177,7 @@ Target2:	.dw	.Pointer
      </article>
 
      <article>
-      <h3><a href="/SnesMasterCycleViewer/?sa=008000&mc=20000&src=Start%3A%09%09REP%09%23%2430%0A%09%09.m16%20.i16%0A%0A%09%09%3B%20Copy%20%24008000%20to%20%24000000%2C%20%24123%20bytes%0A%09%09LDA%09%23%24123%0A%09%09LDX%09%23%248000%0A%09%09LDY%09%23%240000%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20MVP%09Start%3E%3E16%2C%20%2400%09%3B%20src%2C%20dst%0A%0A%09%09LDA%09%240123%09%09%3B%20A%20%3D%20%24BBAA%0A%09%09STP%0A%0A%09%09.org%09%24008123%0A%09%09.db%09%24AA%2C%20%24EE%0A%0A%09%09.org%09%240123%0A%09%09.db%09%24FF%2C%20%24BB%0A">Block move</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?sa=008000&mc=20000&src=Start%3A%09%09REP%09%23%2430%0A%09%09.m16%20.i16%0A%0A%09%09%3B%20Copy%20%24008000%20to%20%24000000%2C%20%24123%20bytes%0A%09%09LDA%09%23%24123%0A%09%09LDX%09%23%248000%0A%09%09LDY%09%23%240000%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20MVN%09Start%3E%3E16%2C%20%2400%09%3B%20src%2C%20dst%0A%0A%09%09LDA%09%240123%09%09%3B%20A%20%3D%20%24BBAA%0A%09%09STP%0A%0A%09%09.org%09%24008123%0A%09%09.db%09%24AA%2C%20%24EE%0A%0A%09%09.org%09%240123%0A%09%09.db%09%24FF%2C%20%24BB%0A">Block move</a></h3>
       <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>Start:		REP	#$30
 		.m16 .i16
 
@@ -185,7 +185,7 @@ Target2:	.dw	.Pointer
 		LDA	#$123
 		LDX	#$8000
 		LDY	#$0000
-                MVP	Start>>16, $00	; src, dst
+                MVN	Start>>16, $00	; src, dst
 
 		LDA	$0123		; A = $BBAA
 		STP
@@ -219,14 +219,14 @@ Start:		LDA.b	$00	; Slow,Slow,Slow
      </article>
 
      <article>
-      <h3><a href="/SnesMasterCycleViewer/?src=DMAP0%09%09%3D%20%244300%0ADMAUNKNOWN7B%09%3D%20%24437B%0ADMAUNKNOWN7F%09%3D%20%24437F%0A%0AStart%3A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%09%09%0A%09%09LDX%09%23DMAUNKNOWN7B%0A%09%09TXS%09%09%3B%20S%20%3D%20%24437B%0A%0A%09%09JSR%09Sub%0A%09%09STP%0A%0ASub%3A%0A%09%09%3B%20Mirrored%20fast%20RAM%0A%09%09LDA%09DMAUNKNOWN7F%0A%09%09STA%09DMAUNKNOWN7B%0A%09%09RTS%0A">DMA registers as fast RAM</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=DMAP0%09%09%3D%20%244300%0ADMAUNKNOWN7B%09%3D%20%24437B%0ADMAUNKNOWN7F%09%3D%20%24437F%0A%0AStart%3A%09%09REP%09%23%2410%0A%09%09.m8%20.i16%0A%0A%09%09LDX%09%23DMAUNKNOWN7B%0A%09%09TXS%09%09%3B%20S%20%3D%20%24437B%0A%0A%09%09JSR%09Sub%0A%09%09STP%0A%0ASub%3A%0A%09%09%3B%20Mirrored%20fast%20RAM%0A%09%09LDA%09DMAUNKNOWN7F%0A%09%09STA%09DMAUNKNOWN7B%0A%09%09RTS%0A">DMA registers as fast RAM</a></h3>
       <textarea class="AssemblerSource" rows="16" cols="80" wrap="off" readonly>DMAP0		= $4300
 DMAUNKNOWN7B	= $437B
 DMAUNKNOWN7F	= $437F
 
 Start:		REP	#$10
 		.m8 .i16
-		
+
 		LDX	#DMAUNKNOWN7B
 		TXS		; S = $437B
 
@@ -371,7 +371,7 @@ RamCodeLength	= .End - RamCode
      </article>
 
      <article>
-      <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDX%09%23%24AA%0A%09%09LDY%09%23%24FC%09%3B%20JSR%20(abs%2Cx)%0A%09%09NOP%09%09%3B%20address%20adjustment%20for%20pushing%20%2408%0A%09%09JSL%09%24015000%09%3B%20jump%20to%20openbus%0A%0A%09%09.org%09%2401BBBB%0AReturn%3A%09%09STP%09%09%3B%20return%20address%20from%20openbus%0A%0A%09%09.org%09%2405A6%09%3B%20%2404FC%20%2B%20%24AA%0A%09%09.dw%09Return%0A">Execute openbus</a></h3>
+      <h3><a href="/SnesMasterCycleViewer/?src=%09%09.m8%20.i8%0AStart%3A%09%09LDX%09%23%24AA%0A%09%09JML%09%24015000%09%3B%20jump%20to%20openbus%0A%0A%09%09.org%09%2401BBBB%0AReturn%3A%09%09STP%09%09%3B%20return%20address%20from%20openbus%0A%0A%09%09.org%09%24AB%09%3B%20%2401%20%2B%20%24AA%0A%09%09.dw%09%242525%09%3B%20AND%20dp%0A%0A%09%09.org%09%2425%0A%09%09.dw%09%24FC%09%3B%20JSR%20(abx%2C%20X)%0A%0A%09%09.org%09%2407A6%09%3B%20%2406FC%20%2B%20%24AA%0A%09%09.dw%09Return%0A">Execute openbus</a></h3>
       <p>
        $00-3F,80-BF:2000-5FFF with no I/O registers, LoROM maps $00-3F,80-BF:6000-7FFF and HiROM maps $00-0F,80-8F:6000-7FFF as open buses.
       </p>
@@ -388,7 +388,7 @@ Return:		STP		; return address from openbus
 		.org	$25
 		.dw	$FC	; JSR (abx, X)
 
-		.org	$06A6	; $05FC + $AA
+		.org	$07A6	; $06FC + $AA
 		.dw	Return
 </textarea>
      </article>
