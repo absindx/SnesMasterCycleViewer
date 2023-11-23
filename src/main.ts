@@ -844,7 +844,7 @@ namespace Emulator{
 
 				const effectiveAddressPage	= (operand1High[0].Data << 8) | (operand1Low[0].Data);
 				const operand1			= (operand1Bank[0].Data << 16) | effectiveAddressPage;
-				const effectiveAddress		= (operand1Bank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage + cpu.Registers.GetRegisterX());
+				const effectiveAddress		= Utility.Type.ToLong(operand1 + cpu.Registers.GetRegisterX());
 
 				log.Addressing			= Addressing.AbsoluteLongIndexedX;
 				log.Operand1			= operand1;
@@ -1200,7 +1200,7 @@ namespace Emulator{
 				const effectiveAddressBank	= cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 2);
 				log.AccessLog.push(effectiveAddressBank[1]);
 				const effectiveAddressPage	= ((effectiveAddressHigh[0].Data << 8) | (effectiveAddressLow[0].Data)) + cpu.Registers.GetRegisterY();
-				const effectiveAddress		= (effectiveAddressBank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage);
+				const effectiveAddress		= Utility.Type.ToLong((effectiveAddressBank[0].Data << 16) | effectiveAddressPage);
 				yield;
 
 				log.Addressing			= Addressing.DirectpageIndirectLongIndexedY;
@@ -2952,6 +2952,7 @@ namespace Emulator{
 		public SetRegisterP(p: number){
 			this.P	= Utility.Type.ToByte(p);
 			this.ToEmulationMode();
+			this.UpdateIndexRegister();
 		}
 		public SwapStatusFlagCE(){
 			// swap C, E flags
@@ -2960,6 +2961,7 @@ namespace Emulator{
 			this.E	= e;
 
 			this.ToEmulationMode();
+			this.UpdateIndexRegister();
 		}
 		protected ToEmulationMode(){
 			if(!this.GetStatusFlagE()){
@@ -2971,12 +2973,17 @@ namespace Emulator{
 			// set MX(RB) flags
 			this.P	|= 0x30;
 
+			// set stack pointer high byte
+			this.S	= (this.S & 0x00FF) | 0x0100;
+		}
+		protected UpdateIndexRegister(){
+			if(!this.GetStatusFlagE() && !this.GetStatusFlagX()){
+				return;
+			}
+
 			// clear index registers high byte
 			this.X	&= 0x00FF;
 			this.Y	&= 0x00FF;
-
-			// set stack pointer high byte
-			this.S	= (this.S & 0x00FF) | 0x0100;
 		}
 
 		public GetRegisterA(forceFull: boolean = false): number{
@@ -3079,7 +3086,7 @@ namespace Emulator{
 			return Utility.Type.ToWord(this.D + (address & this.GetOperandMask()));
 		}
 		public ToDataAddress(address: number){
-			return (this.DB << 16) + Utility.Type.ToWord(address);
+			return Utility.Type.ToLong((this.DB << 16) + address);
 		}
 		public ToProgramAddress(address: number){
 			return (this.PB << 16) | Utility.Type.ToWord(address);
