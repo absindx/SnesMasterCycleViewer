@@ -7,6 +7,13 @@ Intended to assist in routine optimization.
 
 This is **not** intended to emulate SNES perfectly.  
 
+## Accuracy
+
+### Passed test
+
+* [PeterLemon - CPUTest](https://github.com/PeterLemon/SNES)
+* [gilyon - snes-tests](https://github.com/gilyon/snes-tests)
+
 ## ToDo  
 
 * Add viewer

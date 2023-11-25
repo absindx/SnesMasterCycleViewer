@@ -464,6 +464,8 @@ var Emulator;
             log.InstructionAddress = this.Registers.GetFullProgramCounter();
             let instructionFunction;
             const startPC = this.Registers.PC;
+            const startSP = this.Registers.S;
+            let offsetSP = 0;
             const opcode = this.FetchProgramByte(AccessType.FetchOpcode);
             log.Instruction = opcode[0].Data;
             log.Source = opcode[0].Source;
@@ -498,11 +500,15 @@ var Emulator;
                     });
                 }
             }
-            function pushPushStack(value) {
-                value = Utility.Type.ToByte(value);
-                const address = cpu.Registers.S;
+            function pushPushStack(value, emulationWrapping = false) {
+                let address = cpu.Registers.S;
+                if (regs.GetStatusFlagE() && !emulationWrapping) {
+                    address = startSP + offsetSP;
+                }
                 const result = cpu.WriteDataByte(AccessType.PushStack, address, value);
+                value = Utility.Type.ToByte(value);
                 cpu.Registers.SetRegisterS(cpu.Registers.S - 1);
+                offsetSP--;
                 log.AccessLog.push({
                     AddressBus: address,
                     DataBus: value,
@@ -511,9 +517,13 @@ var Emulator;
                     Cycle: result[1].Cycle,
                 });
             }
-            function pushPullStack() {
+            function pushPullStack(emulationWrapping = false) {
                 cpu.Registers.SetRegisterS(cpu.Registers.S + 1);
-                const address = cpu.Registers.S;
+                offsetSP++;
+                let address = cpu.Registers.S;
+                if (regs.GetStatusFlagE() && !emulationWrapping) {
+                    address = startSP + offsetSP;
+                }
                 const result = cpu.ReadDataByte(AccessType.PullStack, address);
                 const value = result[0].Data;
                 log.AccessLog.push({
@@ -714,7 +724,7 @@ var Emulator;
                 yield;
                 const effectiveAddressPage = (operand1High[0].Data << 8) | (operand1Low[0].Data);
                 const operand1 = (operand1Bank[0].Data << 16) | effectiveAddressPage;
-                const effectiveAddress = (operand1Bank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage + cpu.Registers.GetRegisterX());
+                const effectiveAddress = Utility.Type.ToLong(operand1 + cpu.Registers.GetRegisterX());
                 log.Addressing = Addressing.AbsoluteLongIndexedX;
                 log.Operand1 = operand1;
                 log.EffectiveAddress = effectiveAddress;
@@ -917,7 +927,11 @@ var Emulator;
                 const effectiveAddressLow = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 0);
                 log.AccessLog.push(effectiveAddressLow[1]);
                 yield;
-                const effectiveAddressHigh = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 1);
+                let indirectAddressHigh = indirectAddress + 1;
+                if (regs.GetStatusFlagE()) {
+                    indirectAddressHigh = Utility.Type.ToWord((indirectAddress & 0xFF00) | (indirectAddressHigh & 0xFF));
+                }
+                const effectiveAddressHigh = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddressHigh);
                 log.AccessLog.push(effectiveAddressHigh[1]);
                 const effectiveAddress = cpu.Registers.ToDataAddress((effectiveAddressHigh[0].Data << 8) | effectiveAddressLow[0].Data);
                 yield;
@@ -1010,7 +1024,7 @@ var Emulator;
                 const effectiveAddressBank = cpu.ReadDataByte(AccessType.ReadIndirect, indirectAddress + 2);
                 log.AccessLog.push(effectiveAddressBank[1]);
                 const effectiveAddressPage = ((effectiveAddressHigh[0].Data << 8) | (effectiveAddressLow[0].Data)) + cpu.Registers.GetRegisterY();
-                const effectiveAddress = (effectiveAddressBank[0].Data << 16) | Utility.Type.ToWord(effectiveAddressPage);
+                const effectiveAddress = Utility.Type.ToLong((effectiveAddressBank[0].Data << 16) | effectiveAddressPage);
                 yield;
                 log.Addressing = Addressing.DirectpageIndirectLongIndexedY;
                 log.Operand1 = operand1;
@@ -1177,18 +1191,18 @@ var Emulator;
                 log.EffectiveAddress = effectiveAddress;
                 yield* instructionFunction[1];
             }
-            function* AddressingStackPull(lengthFlag) {
+            function* AddressingStackPull(lengthFlag, emulationWrapping = true) {
                 calculateInstructionLength();
                 pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
                 const stackPointer = cpu.Registers.S;
-                const stackLow = pushPullStack();
+                const stackLow = pushPullStack(emulationWrapping);
                 let effectiveValue = stackLow;
                 if (!lengthFlag) {
                     yield;
-                    const stackHigh = pushPullStack();
+                    const stackHigh = pushPullStack(emulationWrapping);
                     effectiveValue |= (stackHigh << 8);
                 }
                 updateNZFlag(lengthFlag, effectiveValue);
@@ -1212,20 +1226,21 @@ var Emulator;
                 yield* instructionFunction[1];
             }
             function* AddressingStackReturnInterrupt() {
+                const emulationWrapping = true;
                 calculateInstructionLength();
                 pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
-                const stackStatus = pushPullStack();
+                const stackStatus = pushPullStack(emulationWrapping);
                 yield;
-                const stackPCLow = pushPullStack();
+                const stackPCLow = pushPullStack(emulationWrapping);
                 yield;
-                const stackPCHigh = pushPullStack();
+                const stackPCHigh = pushPullStack(emulationWrapping);
                 let stackPCBank = cpu.Registers.PB;
                 if (!cpu.Registers.GetStatusFlagE()) {
                     yield;
-                    stackPCBank = pushPullStack();
+                    stackPCBank = pushPullStack(emulationWrapping);
                 }
                 cpu.Registers.SetRegisterP(stackStatus);
                 let effectiveAddress = (stackPCBank << 16) | (stackPCHigh << 8) | stackPCLow;
@@ -1234,21 +1249,22 @@ var Emulator;
                 yield* instructionFunction[1];
             }
             function* AddressingStackReturn(lengthFlag) {
+                const emulationWrapping = lengthFlag;
                 calculateInstructionLength();
                 pushDummyAccess(AccessType.ReadDummy, true, false, 1);
                 yield;
                 pushDummyAccess(AccessType.ReadDummy);
                 yield;
-                const stackPCLow = pushPullStack();
+                const stackPCLow = pushPullStack(emulationWrapping);
                 yield;
-                const stackPCHigh = pushPullStack();
+                const stackPCHigh = pushPullStack(emulationWrapping);
                 yield;
                 let stackPCBank = cpu.Registers.PB;
                 if (lengthFlag) {
                     pushDummyAccess(AccessType.ReadDummy);
                 }
                 else {
-                    stackPCBank = pushPullStack();
+                    stackPCBank = pushPullStack(emulationWrapping);
                 }
                 let effectiveAddress = (stackPCBank << 16) | (stackPCHigh << 8) | stackPCLow;
                 log.Addressing = Addressing.Stack;
@@ -1256,24 +1272,25 @@ var Emulator;
                 yield* instructionFunction[1];
             }
             function* AddressingStackInterrupt(emulationMask) {
+                const emulationWrapping = true;
                 const operand1Low = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1Low[1]);
                 calculateInstructionLength();
                 yield;
                 if (!cpu.Registers.GetStatusFlagE()) {
-                    pushPushStack(cpu.Registers.PB);
+                    pushPushStack(cpu.Registers.PB, emulationWrapping);
                     yield;
                 }
                 const stackPointer = cpu.Registers.S;
-                pushPushStack(cpu.Registers.PC >> 8);
+                pushPushStack(cpu.Registers.PC >> 8, emulationWrapping);
                 yield;
-                pushPushStack(cpu.Registers.PC);
+                pushPushStack(cpu.Registers.PC, emulationWrapping);
                 yield;
                 let statusRegister = cpu.Registers.P;
                 if (cpu.Registers.GetStatusFlagE()) {
                     statusRegister |= emulationMask;
                 }
-                pushPushStack(statusRegister);
+                pushPushStack(statusRegister, emulationWrapping);
                 yield;
                 log.Addressing = Addressing.Immediate8;
                 log.Operand1 = operand1Low[0].Data;
@@ -1711,11 +1728,12 @@ var Emulator;
                 log.Instruction = Instruction.INY;
             }
             function* InstructionJSR(instruction, fullAddress) {
+                const emulationWrapping = true && !fullAddress;
                 const jumpAddress = log.Operand1;
                 const pushValue = cpu.Registers.PC - 1;
-                pushPushStack(pushValue >> 8);
+                pushPushStack(pushValue >> 8, emulationWrapping);
                 yield;
-                pushPushStack(pushValue);
+                pushPushStack(pushValue, emulationWrapping);
                 if (fullAddress) {
                     cpu.Registers.SetFullProgramCounter(jumpAddress);
                 }
@@ -2003,7 +2021,7 @@ var Emulator;
                 [AddressingStackPull(true), InstructionSetRegister(Instruction.PLP, 'P')],
                 [AddressingImmediateMemory(), InstructionAND(true)],
                 [AddressingAccumulator(), InstructionASLRegister(Instruction.ROL, regs.GetStatusFlagC())],
-                [AddressingStackPull(false), InstructionSetRegister(Instruction.PLD, 'D')],
+                [AddressingStackPull(false, false), InstructionSetRegister(Instruction.PLD, 'D')],
                 [AddressingAbsDbr(), InstructionBIT()],
                 [AddressingAbsDbr(), InstructionAND()],
                 [AddressingAbsRmw(), InstructionASLMemory(Instruction.ROL, regs.GetStatusFlagC())],
@@ -2131,7 +2149,7 @@ var Emulator;
                 [AddressingImplied(), InstructionTxx(Instruction.TAY, regs.GetRegisterA(true), 'Y', flagX)],
                 [AddressingImmediateMemory(), InstructionLDA(true)],
                 [AddressingImplied(), InstructionTxx(Instruction.TAX, regs.GetRegisterA(true), 'X', flagX)],
-                [AddressingStackPull(true), InstructionSetRegister(Instruction.PLB, 'DB')],
+                [AddressingStackPull(true, false), InstructionSetRegister(Instruction.PLB, 'DB')],
                 [AddressingAbsDbr(), InstructionLDY()],
                 [AddressingAbsDbr(), InstructionLDA()],
                 [AddressingAbsDbr(), InstructionLDX()],
@@ -2540,21 +2558,28 @@ var Emulator;
         SetRegisterP(p) {
             this.P = Utility.Type.ToByte(p);
             this.ToEmulationMode();
+            this.UpdateIndexRegister();
         }
         SwapStatusFlagCE() {
             let e = this.GetStatusFlagC();
             this.SetStatusFlagC(this.E);
             this.E = e;
             this.ToEmulationMode();
+            this.UpdateIndexRegister();
         }
         ToEmulationMode() {
             if (!this.GetStatusFlagE()) {
                 return;
             }
             this.P |= 0x30;
+            this.S = (this.S & 0x00FF) | 0x0100;
+        }
+        UpdateIndexRegister() {
+            if (!this.GetStatusFlagE() && !this.GetStatusFlagX()) {
+                return;
+            }
             this.X &= 0x00FF;
             this.Y &= 0x00FF;
-            this.S = (this.S & 0x00FF) | 0x0100;
         }
         GetRegisterA(forceFull = false) {
             if (this.GetStatusFlagM() && (!forceFull)) {
@@ -2651,7 +2676,7 @@ var Emulator;
             return Utility.Type.ToWord(this.D + (address & this.GetOperandMask()));
         }
         ToDataAddress(address) {
-            return (this.DB << 16) + Utility.Type.ToWord(address);
+            return Utility.Type.ToLong((this.DB << 16) + address);
         }
         ToProgramAddress(address) {
             return (this.PB << 16) | Utility.Type.ToWord(address);
@@ -2696,8 +2721,10 @@ var Emulator;
             if (enableRegion) {
                 data = (_a = this.AddressSpace[realAddress]) !== null && _a !== void 0 ? _a : 0;
             }
+            address = Utility.Type.ToLong(address);
             data = Utility.Type.ToByte(data);
-            const speed = this.UpdateBus(address, data);
+            const speed = this.GetAccessSpeed(address);
+            this.UpdateBus(address, data);
             const source = (_b = this.SourceSpace[realAddress]) !== null && _b !== void 0 ? _b : null;
             const result = {
                 Region: region,
@@ -2715,7 +2742,10 @@ var Emulator;
                     this.AddressSpace[realAddress] = Utility.Type.ToByte(data);
                 }
             }
-            const speed = this.UpdateBus(address, data);
+            address = Utility.Type.ToLong(address);
+            data = Utility.Type.ToByte(data);
+            const speed = this.GetAccessSpeed(address);
+            this.UpdateBus(address, data);
             const result = {
                 Region: region,
                 Speed: speed,
@@ -2869,9 +2899,7 @@ var Emulator;
             }
             return false;
         }
-        UpdateBus(address, data) {
-            address = Utility.Type.ToLong(address);
-            data = Utility.Type.ToByte(data);
+        GetAccessSpeed(address) {
             let speed = (this.IsFastROM) ? AccessSpeed.Fast : AccessSpeed.Slow;
             const bank = address >> 16;
             const page = address & 0x00FFFF;
@@ -2939,9 +2967,11 @@ var Emulator;
             }
             else if (bank <= 0xFF) {
             }
+            return speed;
+        }
+        UpdateBus(address, data) {
             this.AddressBus = address;
             this.DataBus = data;
-            return speed;
         }
         UpdateMode7Latch(value) {
             value = Utility.Type.ToByte(value);
