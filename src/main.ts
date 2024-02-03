@@ -657,9 +657,13 @@ namespace Emulator{
 				const operand1High		= cpu.FetchProgramByte(AccessType.FetchOperand);
 				log.AccessLog.push(operand1High[1]);
 				calculateInstructionLength();
-				yield;
+				//yield;	// JMP: wait on yield of instruction call
 
 				if(waitFlag){
+					// JSR
+
+					yield;
+
 					pushDummyAccess(AccessType.ReadDummy);
 					yield;
 				}

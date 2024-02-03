@@ -564,8 +564,8 @@ var Emulator;
                 const operand1High = cpu.FetchProgramByte(AccessType.FetchOperand);
                 log.AccessLog.push(operand1High[1]);
                 calculateInstructionLength();
-                yield;
                 if (waitFlag) {
+                    yield;
                     pushDummyAccess(AccessType.ReadDummy);
                     yield;
                 }
