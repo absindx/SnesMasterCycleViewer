@@ -1364,6 +1364,7 @@ namespace Emulator{
 
 				log.Addressing			= addressing;
 				log.Operand1			= operand1;
+				log.EffectiveValue		= operand1;
 
 				yield* instructionFunction[1];
 			}
@@ -1694,6 +1695,8 @@ namespace Emulator{
 				const cFlag			= result >= 0;
 				cpu.Registers.SetStatusFlagC(cFlag);
 				updateNZFlag(lengthFlag, result);
+
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionClearFlag(instruction: Instruction, mask: number){
 				log.Instruction			= instruction;
@@ -1868,6 +1871,7 @@ namespace Emulator{
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
 
 				log.Instruction			= Instruction.ADC;
+				log.EffectiveValue		= operand2;
 			}
 			function *InstructionAND(imm: boolean = false){
 				let effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1894,6 +1898,7 @@ namespace Emulator{
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
 				log.Instruction			= Instruction.AND;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionASLRegister(instruction: Instruction, carry: boolean){
 				const effectiveValue		= cpu.Registers.GetRegisterA();
@@ -1957,6 +1962,7 @@ namespace Emulator{
 				cpu.Registers.SetStatusFlagZ(result === 0);
 
 				log.Instruction			= Instruction.BIT;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionBRK(){
 				log.Instruction			= Instruction.BRK;
@@ -2052,6 +2058,7 @@ namespace Emulator{
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
 				log.Instruction			= Instruction.EOR;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionINCRegister(){
 				const effectiveValue		= cpu.Registers.GetRegisterA() + 1;
@@ -2178,6 +2185,7 @@ namespace Emulator{
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
 
 				log.Instruction			= Instruction.ORA;
+				log.EffectiveValue		= readValue;
 			}
 			function *InstructionPEA(){
 				log.Instruction			= Instruction.PEA;
@@ -2285,6 +2293,7 @@ namespace Emulator{
 				updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
 
 				log.Instruction			= Instruction.SBC;
+				log.EffectiveValue		= operand2;
 			}
 			function *InstructionSEP(){
 				log.Instruction			= Instruction.SEP;
@@ -3140,7 +3149,7 @@ namespace Emulator{
 		ReadByte(address: number): MemoryReadResult;
 		WriteByte(address: number, data: number, romWrite: boolean): MemoryWriteResult;
 
-		ClockIO(cycle: AccessSpeed): void;
+		ClockIO(cycle: number): void;
 	}
 	export class SnesMemory implements IMemory{
 		Cpu: Cpu | null			= null;
@@ -3456,7 +3465,7 @@ namespace Emulator{
 			return this.Mode7Latch;
 		}
 
-		public ClockIO(cycle: AccessSpeed): void{
+		public ClockIO(cycle: number): void{
 			this.PpuRegister.Step(cycle);
 			this.CpuRegister.Step(cycle);
 		}
@@ -4053,6 +4062,7 @@ namespace Emulator{
 		XSlow	= 12,
 	}
 	const MinimumMasterCycle	= 2;
+
 	export enum RomMapping{
 		LoROM,
 		HiROM,

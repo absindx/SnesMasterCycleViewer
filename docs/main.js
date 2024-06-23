@@ -1144,6 +1144,7 @@ var Emulator;
                 calculateInstructionLength();
                 log.Addressing = addressing;
                 log.Operand1 = operand1;
+                log.EffectiveValue = operand1;
                 yield* instructionFunction[1];
             }
             function* AddressingImmediateImm8() {
@@ -1394,6 +1395,7 @@ var Emulator;
                 const cFlag = result >= 0;
                 cpu.Registers.SetStatusFlagC(cFlag);
                 updateNZFlag(lengthFlag, result);
+                log.EffectiveValue = readValue;
             }
             function* InstructionClearFlag(instruction, mask) {
                 log.Instruction = instruction;
@@ -1538,6 +1540,7 @@ var Emulator;
                 cpu.Registers.SetRegisterA(writeValue);
                 updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
                 log.Instruction = Instruction.ADC;
+                log.EffectiveValue = operand2;
             }
             function* InstructionAND(imm = false) {
                 let effectiveValue = cpu.Registers.GetRegisterA();
@@ -1560,6 +1563,7 @@ var Emulator;
                 cpu.Registers.SetRegisterA(effectiveValue);
                 updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
                 log.Instruction = Instruction.AND;
+                log.EffectiveValue = readValue;
             }
             function* InstructionASLRegister(instruction, carry) {
                 const effectiveValue = cpu.Registers.GetRegisterA();
@@ -1613,6 +1617,7 @@ var Emulator;
                 }
                 cpu.Registers.SetStatusFlagZ(result === 0);
                 log.Instruction = Instruction.BIT;
+                log.EffectiveValue = readValue;
             }
             function* InstructionBRK() {
                 log.Instruction = Instruction.BRK;
@@ -1694,6 +1699,7 @@ var Emulator;
                 cpu.Registers.SetRegisterA(effectiveValue);
                 updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
                 log.Instruction = Instruction.EOR;
+                log.EffectiveValue = readValue;
             }
             function* InstructionINCRegister() {
                 const effectiveValue = cpu.Registers.GetRegisterA() + 1;
@@ -1799,6 +1805,7 @@ var Emulator;
                 cpu.Registers.SetRegisterA(effectiveValue);
                 updateNZFlag(cpu.Registers.GetStatusFlagM(), effectiveValue);
                 log.Instruction = Instruction.ORA;
+                log.EffectiveValue = readValue;
             }
             function* InstructionPEA() {
                 log.Instruction = Instruction.PEA;
@@ -1887,6 +1894,7 @@ var Emulator;
                 cpu.Registers.SetRegisterA(writeValue);
                 updateNZFlag(cpu.Registers.GetStatusFlagM(), writeValue);
                 log.Instruction = Instruction.SBC;
+                log.EffectiveValue = operand2;
             }
             function* InstructionSEP() {
                 log.Instruction = Instruction.SEP;
@@ -5084,81 +5092,81 @@ var Application;
     var _a;
     class Main {
         static Initialize() {
-            Main.Assembled = null;
-            if (!Main.GetDomElements()) {
+            _a.Assembled = null;
+            if (!_a.GetDomElements()) {
                 return;
             }
-            DomUtility.AllowTab(Main.Dom.AssemblerSource);
+            DomUtility.AllowTab(_a.Dom.AssemblerSource);
             DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
             DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
-            DomUtility.ApplyDomEvents('#ViewerSelect input[type="radio"] ', Main.CheckSelectedViewer);
-            Main.Dom.AssemblerAssemble.removeAttribute('disabled');
-            Main.Dom.CopyUrl.removeAttribute('disabled');
-            Main.Dom.AssemblerAssemble.addEventListener('click', Main.Assemble);
-            Main.Dom.AssembledRun.addEventListener('click', Main.Run);
-            Main.ClearResultViewer();
-            Main.UpdateSelectedViewer();
-            const setting = Main.GetUrlParameter();
+            DomUtility.ApplyDomEvents('#ViewerSelect input[type="radio"] ', _a.CheckSelectedViewer);
+            _a.Dom.AssemblerAssemble.removeAttribute('disabled');
+            _a.Dom.CopyUrl.removeAttribute('disabled');
+            _a.Dom.AssemblerAssemble.addEventListener('click', _a.Assemble);
+            _a.Dom.AssembledRun.addEventListener('click', _a.Run);
+            _a.ClearResultViewer();
+            _a.UpdateSelectedViewer();
+            const setting = _a.GetUrlParameter();
             if (setting) {
-                Main.SetSetting(setting);
+                _a.SetSetting(setting);
                 if (setting.Source.length > 0) {
-                    Main.Dom.AssemblerAssemble.click();
-                    Main.Dom.AssembledRun.click();
+                    _a.Dom.AssemblerAssemble.click();
+                    _a.Dom.AssembledRun.click();
                 }
             }
-            Main.Dom.ErrorMessage.classList.add('hide');
+            _a.Dom.ErrorMessage.classList.add('hide');
         }
         static GetDomElements() {
             let result = true;
             const set = (name) => {
                 const element = document.querySelector('#' + name);
                 if (element) {
-                    Main.Dom[name] = element;
+                    _a.Dom[name] = element;
                     return true;
                 }
                 return false;
             };
-            for (const key in Main.Dom) {
+            for (const key in _a.Dom) {
                 result && (result = set(key));
             }
             return result;
         }
         static Assemble() {
-            Main.ResultEnable = false;
-            Main.Assembled = null;
-            Main.ClearResultViewer();
-            const setting = Main.GetSetting();
+            _a.ResultEnable = false;
+            _a.Assembled = null;
+            _a.ClearResultViewer();
+            const setting = _a.GetSetting();
             const source = setting.Source;
             if ((!source) || (source.length <= 0)) {
-                Main.SetAssemblerError(false, []);
+                _a.SetAssemblerError(false, []);
                 return;
             }
             const [assembled, message] = Assembler.Assembler.Assemble(source, setting.StartAddress);
             if (assembled === null) {
-                Main.SetAssemblerError(false, message);
+                _a.SetAssemblerError(false, message);
                 return;
             }
             const outputHex = Assembler.HexFile.ChunksToText(assembled);
-            Main.SetTextareaStrings(Main.Dom.AssemblerOutput, outputHex);
+            _a.SetTextareaStrings(_a.Dom.AssemblerOutput, outputHex);
             const intelHex = Assembler.HexFile.ChunksToIntelHex(assembled);
-            Main.SetTextareaStrings(Main.Dom.HexIntelHex, intelHex);
+            _a.SetTextareaStrings(_a.Dom.HexIntelHex, intelHex);
             const mSrec = Assembler.HexFile.ChunksToSRec(assembled);
-            Main.SetTextareaStrings(Main.Dom.HexSrec, mSrec);
-            Main.SetAssemblerError(true, []);
-            Main.Assembled = assembled;
+            _a.SetTextareaStrings(_a.Dom.HexSrec, mSrec);
+            _a.SetAssemblerError(true, []);
+            _a.Assembled = assembled;
         }
         static Run() {
             const memory = new Emulator.SnesMemory();
-            Main.Memory = memory;
-            const setting = Main.GetSetting();
+            _a.Memory = memory;
+            const setting = _a.GetSetting();
             memory.ROMMapping = setting.RomMapping;
             memory.IsFastROM = setting.FastRom;
             const maxCycle = setting.MaxCycle;
             const statusFlagE = setting.StatusFlagE;
-            Main.UploadDefaultMemory(setting.StartAddress);
-            Main.UploadMemory();
-            const cpu = new Emulator.Cpu(Main.Memory);
-            Main.Cpu = cpu;
+            _a.UploadDefaultMemory(setting.StartAddress);
+            _a.UploadMemory();
+            const cpu = new Emulator.Cpu(_a.Memory);
+            _a.Cpu = cpu;
             const initialRegisters = new Emulator.Registers();
             initialRegisters.SetStatusFlagE(statusFlagE);
             cpu.ResetRegisters = {
@@ -5179,8 +5187,8 @@ var Application;
                     }
                 }
             }
-            Main.ResultEnable = true;
-            Main.UpdateResultViewer(cpu);
+            _a.ResultEnable = true;
+            _a.UpdateResultViewer(cpu);
         }
         static UploadChunk(memory, chunk) {
             for (let i = 0; i < chunk.Data.length; i++) {
@@ -5200,29 +5208,29 @@ var Application;
             for (let i = 0; i < 16; i++) {
                 pushWord(resetVector, startAddress);
             }
-            Main.UploadChunk(Main.Memory, resetVector);
+            _a.UploadChunk(_a.Memory, resetVector);
         }
         static UploadMemory() {
-            if (Main.Assembled === null) {
+            if (_a.Assembled === null) {
                 return;
             }
-            for (let i = 0; i < Main.Assembled.length; i++) {
-                Main.UploadChunk(Main.Memory, Main.Assembled[i]);
+            for (let i = 0; i < _a.Assembled.length; i++) {
+                _a.UploadChunk(_a.Memory, _a.Assembled[i]);
             }
         }
         static SetAssemblerError(success, errorMessages) {
             const className = 'errorMessage';
             if (success) {
-                Main.Dom.AssemblerOutput.classList.remove(className);
-                Main.Dom.AssembledRun.removeAttribute('disabled');
+                _a.Dom.AssemblerOutput.classList.remove(className);
+                _a.Dom.AssembledRun.removeAttribute('disabled');
             }
             else {
                 const messages = Assembler.Assembler.ConvertErrorStrings(errorMessages);
-                Main.SetTextareaStrings(Main.Dom.AssemblerOutput, messages);
-                Main.Dom.AssemblerOutput.classList.add(className);
-                Main.ClearTextarea(Main.Dom.HexIntelHex);
-                Main.ClearTextarea(Main.Dom.HexSrec);
-                Main.Dom.AssembledRun.setAttribute('disabled', '');
+                _a.SetTextareaStrings(_a.Dom.AssemblerOutput, messages);
+                _a.Dom.AssemblerOutput.classList.add(className);
+                _a.ClearTextarea(_a.Dom.HexIntelHex);
+                _a.ClearTextarea(_a.Dom.HexSrec);
+                _a.Dom.AssembledRun.setAttribute('disabled', '');
             }
         }
         static SetTextareaStrings(textarea, strings) {
@@ -5238,23 +5246,23 @@ var Application;
         static GetSetting() {
             function getDom(name) {
                 const dom = document.querySelector('#SettingForm input[name="' + name + '"]');
-                return dom !== null && dom !== void 0 ? dom : Main.dummyInputNode;
+                return dom !== null && dom !== void 0 ? dom : _a.dummyInputNode;
             }
             const setting = new Setting;
             setting.RomMapping = DomUtility.GetFormRadio('#SettingForm', 'mapping', {
                 'lorom': Emulator.RomMapping.LoROM,
                 'hirom': Emulator.RomMapping.HiROM,
             }, Emulator.RomMapping.LoROM);
-            setting.FastRom = Main.GetFormBoolean(getDom('fastrom'));
-            setting.StatusFlagE = Main.GetFormBoolean(getDom('eflag'));
-            setting.StartAddress = Main.GetFormNumber(getDom('startpc'), 16, 0x008000);
-            setting.MaxCycle = Main.GetFormNumber(getDom('cycle'), 10, 10000);
-            setting.EmulationStopSTP = Main.GetFormBoolean(getDom('stops'));
-            setting.EmulationStopWAI = Main.GetFormBoolean(getDom('stopw'));
-            setting.EmulationStopBRK = Main.GetFormBoolean(getDom('stopb'));
-            setting.EmulationStopCOP = Main.GetFormBoolean(getDom('stopc'));
-            setting.EmulationStopWDM = Main.GetFormBoolean(getDom('stopr'));
-            setting.Source = Main.Dom.AssemblerSource.value;
+            setting.FastRom = _a.GetFormBoolean(getDom('fastrom'));
+            setting.StatusFlagE = _a.GetFormBoolean(getDom('eflag'));
+            setting.StartAddress = _a.GetFormNumber(getDom('startpc'), 16, 0x008000);
+            setting.MaxCycle = _a.GetFormNumber(getDom('cycle'), 10, 10000);
+            setting.EmulationStopSTP = _a.GetFormBoolean(getDom('stops'));
+            setting.EmulationStopWAI = _a.GetFormBoolean(getDom('stopw'));
+            setting.EmulationStopBRK = _a.GetFormBoolean(getDom('stopb'));
+            setting.EmulationStopCOP = _a.GetFormBoolean(getDom('stopc'));
+            setting.EmulationStopWDM = _a.GetFormBoolean(getDom('stopr'));
+            setting.Source = _a.Dom.AssemblerSource.value;
             setting.ViewerMode = DomUtility.GetFormRadio('#ViewerSelect', 'viewer', {
                 'textlog': ViewerMode.TextLog,
                 'tablelog': ViewerMode.TableLog,
@@ -5278,20 +5286,20 @@ var Application;
                     query += '[value="' + value + '"]';
                 }
                 const dom = document.querySelector(query);
-                return dom !== null && dom !== void 0 ? dom : Main.dummyInputNode;
+                return dom !== null && dom !== void 0 ? dom : _a.dummyInputNode;
             }
-            Main.SetFormBoolean(getDom('mapping', 'lorom'), setting.RomMapping === Emulator.RomMapping.LoROM);
-            Main.SetFormBoolean(getDom('mapping', 'hirom'), setting.RomMapping === Emulator.RomMapping.HiROM);
-            Main.SetFormBoolean(getDom('fastrom'), setting.FastRom);
-            Main.SetFormBoolean(getDom('eflag'), setting.StatusFlagE);
-            Main.SetFormHexadecimal(getDom('startpc'), setting.StartAddress);
-            Main.SetFormInteger(getDom('cycle'), setting.MaxCycle);
-            Main.SetFormBoolean(getDom('stopw'), setting.EmulationStopWAI);
-            Main.SetFormBoolean(getDom('stopb'), setting.EmulationStopBRK);
-            Main.SetFormBoolean(getDom('stopc'), setting.EmulationStopCOP);
-            Main.SetFormBoolean(getDom('stopr'), setting.EmulationStopWDM);
+            _a.SetFormBoolean(getDom('mapping', 'lorom'), setting.RomMapping === Emulator.RomMapping.LoROM);
+            _a.SetFormBoolean(getDom('mapping', 'hirom'), setting.RomMapping === Emulator.RomMapping.HiROM);
+            _a.SetFormBoolean(getDom('fastrom'), setting.FastRom);
+            _a.SetFormBoolean(getDom('eflag'), setting.StatusFlagE);
+            _a.SetFormHexadecimal(getDom('startpc'), setting.StartAddress);
+            _a.SetFormInteger(getDom('cycle'), setting.MaxCycle);
+            _a.SetFormBoolean(getDom('stopw'), setting.EmulationStopWAI);
+            _a.SetFormBoolean(getDom('stopb'), setting.EmulationStopBRK);
+            _a.SetFormBoolean(getDom('stopc'), setting.EmulationStopCOP);
+            _a.SetFormBoolean(getDom('stopr'), setting.EmulationStopWDM);
             if (setting.Source.length > 0) {
-                Main.Dom.AssemblerSource.value = setting.Source;
+                _a.Dom.AssemblerSource.value = setting.Source;
             }
             DomUtility.SetFormRadio('#ViewerSelect', 'viewer', {
                 textlog: ViewerMode.TextLog,
@@ -5300,7 +5308,7 @@ var Application;
                 heatmap: ViewerMode.Heatmap,
                 written: ViewerMode.Written,
             }, setting.ViewerMode, 'textlog');
-            Main.UpdateSelectedViewer(setting.ViewerMode);
+            _a.UpdateSelectedViewer(setting.ViewerMode);
         }
         static SetFormBoolean(dom, value) {
             dom.checked = value;
@@ -5390,10 +5398,10 @@ var Application;
                         setting.EmulationStopWDM = parameterToBoolean(value, setting.EmulationStopWDM);
                         break;
                     case 'src':
-                        setting.Source = Main.DecodeSource(value);
+                        setting.Source = _a.DecodeSource(value);
                         break;
                     case 'zsrc':
-                        setting.Source = Main.DecodeCompressedSource(value);
+                        setting.Source = _a.DecodeCompressedSource(value);
                         break;
                     case 'vm': {
                         for (let mode in ViewerMode) {
@@ -5414,7 +5422,7 @@ var Application;
         }
         static GetCopyUrl() {
             let url = location.origin + location.pathname;
-            const setting = Main.GetSetting();
+            const setting = _a.GetSetting();
             function booleanToParameter(value) {
                 return (value) ? '1' : '0';
             }
@@ -5427,8 +5435,8 @@ var Application;
             url += `&esb=${booleanToParameter(setting.EmulationStopBRK)}`;
             url += `&esc=${booleanToParameter(setting.EmulationStopCOP)}`;
             url += `&esr=${booleanToParameter(setting.EmulationStopWDM)}`;
-            const rawSource = Main.EncodeSource(setting.Source);
-            const compressedSource = Main.EncodeCompressedSource(setting.Source);
+            const rawSource = _a.EncodeSource(setting.Source);
+            const compressedSource = _a.EncodeCompressedSource(setting.Source);
             if (rawSource.length < compressedSource.length) {
                 url += `&src=${rawSource}`;
             }
@@ -5480,58 +5488,58 @@ var Application;
                 }, ViewerMode.TextLog);
             }
             const viewerList = [
-                Main.Dom.ViewerTextLog,
-                Main.Dom.ViewerTableLog,
-                Main.Dom.ViewerTimeline,
-                Main.Dom.ViewerHeatmap,
-                Main.Dom.ViewerWritten,
+                _a.Dom.ViewerTextLog,
+                _a.Dom.ViewerTableLog,
+                _a.Dom.ViewerTimeline,
+                _a.Dom.ViewerHeatmap,
+                _a.Dom.ViewerWritten,
             ];
             viewerList.forEach((viewer) => {
                 viewer.classList.add('hide');
             });
             let selectedDom = viewerList[selected];
             selectedDom.classList.remove('hide');
-            if (Main.ResultEnable) {
+            if (_a.ResultEnable) {
                 switch (selected) {
                     case ViewerMode.Timeline:
-                        this.UpdateResultViewer_Timeline(Main.Cpu);
+                        this.UpdateResultViewer_Timeline(_a.Cpu);
                         break;
                 }
             }
         }
         static CheckSelectedViewer(element) {
             element.addEventListener('change', (e) => {
-                Main.UpdateSelectedViewer();
+                _a.UpdateSelectedViewer();
             });
         }
         static ClearResultViewer() {
             const clearText = '---';
-            Main.Dom.ResultStatistics_Step.textContent = clearText;
-            Main.Dom.ResultStatistics_Cycle.textContent = clearText;
-            Main.Dom.ResultStatistics_Master.textContent = clearText;
-            Main.ClearResultViewerFunctions.forEach((clearFunction) => {
+            _a.Dom.ResultStatistics_Step.textContent = clearText;
+            _a.Dom.ResultStatistics_Cycle.textContent = clearText;
+            _a.Dom.ResultStatistics_Master.textContent = clearText;
+            _a.ClearResultViewerFunctions.forEach((clearFunction) => {
                 try {
                     clearFunction();
                 }
                 catch (_b) { }
             });
-            Main.TimelineGenerated = false;
+            _a.TimelineGenerated = false;
         }
         static UpdateResultViewer(cpu) {
-            Main.ClearResultViewer();
-            Main.Dom.ResultStatistics_Step.textContent = cpu.Logs.length.toString();
-            Main.Dom.ResultStatistics_Cycle.textContent = cpu.CpuCycleCounter.toString();
-            Main.Dom.ResultStatistics_Master.textContent = cpu.MasterCycleCounter.toString();
-            Main.UpdateResultViewerFunctions.forEach((updateFunction) => {
+            _a.ClearResultViewer();
+            _a.Dom.ResultStatistics_Step.textContent = cpu.Logs.length.toString();
+            _a.Dom.ResultStatistics_Cycle.textContent = cpu.CpuCycleCounter.toString();
+            _a.Dom.ResultStatistics_Master.textContent = cpu.MasterCycleCounter.toString();
+            _a.UpdateResultViewerFunctions.forEach((updateFunction) => {
                 try {
                     updateFunction(cpu);
                 }
                 catch (_b) { }
             });
-            Main.UpdateSelectedViewer();
+            _a.UpdateSelectedViewer();
         }
         static ClearResultViewer_TextLog() {
-            Main.ClearTextarea(Main.Dom.ViewerTextLog_Log);
+            _a.ClearTextarea(_a.Dom.ViewerTextLog_Log);
         }
         static UpdateResultViewer_TextLog(cpu) {
             let logStrings = [];
@@ -5543,7 +5551,7 @@ var Application;
                     logStrings.push('  ' + Emulator.StepLog.AccessLogToString(accessLog));
                 }
             }
-            Main.SetTextareaStrings(Main.Dom.ViewerTextLog_Log, logStrings);
+            _a.SetTextareaStrings(_a.Dom.ViewerTextLog_Log, logStrings);
         }
         static ClearResultViewer_TableLog() {
         }
@@ -5560,7 +5568,7 @@ var Application;
             }
             tableHeader[tableCols - 1].textContent = 'Timeline';
             tableHeader[tableCols - 1].classList.add('dummyTimeline');
-            Main.ClearTableBody('#ViewerTimeline_Table', tableCols);
+            _a.ClearTableBody('#ViewerTimeline_Table', tableCols);
             const tableBody = document.querySelector('#ViewerTimeline_Table tbody tr');
             if (!tableBody) {
                 return;
@@ -5570,7 +5578,7 @@ var Application;
         }
         static UpdateResultViewer_Timeline(cpu) {
             var _b;
-            if (Main.TimelineGenerated) {
+            if (_a.TimelineGenerated) {
                 return;
             }
             const tableHeader = document.querySelector('#ViewerTimeline_Table thead tr');
@@ -5596,7 +5604,7 @@ var Application;
                 return;
             }
             const checkCell = timelineRow * stepLength.length;
-            if (checkCell >= Main.TimelineWarning) {
+            if (checkCell >= _a.TimelineWarning) {
                 if (!window.confirm('Displays a very large table.\nIt may slow down your browser.\nIs it OK?')) {
                     return;
                 }
@@ -5670,10 +5678,10 @@ var Application;
             for (const key in timelineLogs) {
                 const row = addRow(timelineLogs[key]);
             }
-            Main.TimelineGenerated = true;
+            _a.TimelineGenerated = true;
         }
         static ClearResultViewer_Heatmap() {
-            Main.ClearTableBody('#ViewerHeatmap_Table', 5);
+            _a.ClearTableBody('#ViewerHeatmap_Table', 5);
         }
         static UpdateResultViewer_Heatmap(cpu) {
             const tableBody = document.querySelector('#ViewerHeatmap_Table tbody');
@@ -5708,7 +5716,7 @@ var Application;
             function updateEntry(stepLog) {
                 const entry = getEntry(stepLog);
                 entry.Cycle += stepLog.GetExecuteMasterCycle();
-                entry.Rate = entry.Cycle / Main.Cpu.MasterCycleCounter;
+                entry.Rate = entry.Cycle / _a.Cpu.MasterCycleCounter;
             }
             for (let s = 0; s < cpu.Logs.length; s++) {
                 const step = cpu.Logs[s];
@@ -5733,7 +5741,7 @@ var Application;
                 const cellCycle = createRow(row, 'cycle');
                 const cellRate = createRow(row, 'rate');
                 tableBody.appendChild(row);
-                row.setAttribute('style', `background-color: RGBA(${Main.HeatmapColor}, ${history.Rate * Main.HeatmapMaxIntensity});`);
+                row.setAttribute('style', `background-color: RGBA(${_a.HeatmapColor}, ${history.Rate * _a.HeatmapMaxIntensity});`);
                 if (history.Line >= 0) {
                     cellLine.textContent = `${history.Line}`;
                 }
@@ -5748,7 +5756,7 @@ var Application;
             }
         }
         static ClearResultViewer_Written() {
-            Main.ClearTableBody('#ViewerWritten_Table', 5);
+            _a.ClearTableBody('#ViewerWritten_Table', 5);
         }
         static UpdateResultViewer_Written(cpu) {
             var _b, _c;
@@ -5856,23 +5864,23 @@ var Application;
     Main.dummyNode = document.createElement('span');
     Main.dummyInputNode = document.createElement('input');
     Main.Dom = {
-        'ErrorMessage': Main.dummyNode,
-        'AssemblerSource': Main.dummyNode,
-        'AssemblerOutput': Main.dummyNode,
-        'HexIntelHex': Main.dummyNode,
-        'HexSrec': Main.dummyNode,
-        'AssemblerAssemble': Main.dummyNode,
-        'AssembledRun': Main.dummyNode,
-        'CopyUrl': Main.dummyNode,
-        'ResultStatistics_Step': Main.dummyNode,
-        'ResultStatistics_Cycle': Main.dummyNode,
-        'ResultStatistics_Master': Main.dummyNode,
-        'ViewerTextLog': Main.dummyNode,
-        'ViewerTextLog_Log': Main.dummyNode,
-        'ViewerTableLog': Main.dummyNode,
-        'ViewerTimeline': Main.dummyNode,
-        'ViewerHeatmap': Main.dummyNode,
-        'ViewerWritten': Main.dummyNode,
+        'ErrorMessage': _a.dummyNode,
+        'AssemblerSource': _a.dummyNode,
+        'AssemblerOutput': _a.dummyNode,
+        'HexIntelHex': _a.dummyNode,
+        'HexSrec': _a.dummyNode,
+        'AssemblerAssemble': _a.dummyNode,
+        'AssembledRun': _a.dummyNode,
+        'CopyUrl': _a.dummyNode,
+        'ResultStatistics_Step': _a.dummyNode,
+        'ResultStatistics_Cycle': _a.dummyNode,
+        'ResultStatistics_Master': _a.dummyNode,
+        'ViewerTextLog': _a.dummyNode,
+        'ViewerTextLog_Log': _a.dummyNode,
+        'ViewerTableLog': _a.dummyNode,
+        'ViewerTimeline': _a.dummyNode,
+        'ViewerHeatmap': _a.dummyNode,
+        'ViewerWritten': _a.dummyNode,
     };
     Main.ResultEnable = false;
     Main.HeatmapColor = '204, 0, 0';
@@ -5880,17 +5888,17 @@ var Application;
     Main.TimelineGenerated = false;
     Main.TimelineWarning = 100000;
     Main.ClearResultViewerFunctions = [
-        Main.ClearResultViewer_TextLog,
-        Main.ClearResultViewer_TableLog,
-        Main.ClearResultViewer_Timeline,
-        Main.ClearResultViewer_Heatmap,
-        Main.ClearResultViewer_Written,
+        _a.ClearResultViewer_TextLog,
+        _a.ClearResultViewer_TableLog,
+        _a.ClearResultViewer_Timeline,
+        _a.ClearResultViewer_Heatmap,
+        _a.ClearResultViewer_Written,
     ];
     Main.UpdateResultViewerFunctions = [
-        Main.UpdateResultViewer_TextLog,
-        Main.UpdateResultViewer_TableLog,
-        Main.UpdateResultViewer_Heatmap,
-        Main.UpdateResultViewer_Written,
+        _a.UpdateResultViewer_TextLog,
+        _a.UpdateResultViewer_TableLog,
+        _a.UpdateResultViewer_Heatmap,
+        _a.UpdateResultViewer_Written,
     ];
     Application.Main = Main;
     class Setting {
