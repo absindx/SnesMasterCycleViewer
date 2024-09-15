@@ -943,7 +943,7 @@ namespace Emulator{
 				}
 				yield;
 
-				log.Addressing			= Addressing.AbsoluteIndexedY;
+				log.Addressing			= Addressing.AbsoluteIndexedX;
 				log.Operand1			= operand1;
 				log.EffectiveAddress		= effectiveAddress;
 				log.EffectiveValue		= effectiveValue;
