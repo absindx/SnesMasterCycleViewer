@@ -5100,12 +5100,14 @@ var Application;
             DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
             DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
             DomUtility.ApplyDomEvents('#ViewerSelect input[type="radio"] ', _a.CheckSelectedViewer);
+            DomUtility.ApplyDomEvents('#ColorTheme input[type="radio"] ', _a.CheckSelectedTheme);
             _a.Dom.AssemblerAssemble.removeAttribute('disabled');
             _a.Dom.CopyUrl.removeAttribute('disabled');
             _a.Dom.AssemblerAssemble.addEventListener('click', _a.Assemble);
             _a.Dom.AssembledRun.addEventListener('click', _a.Run);
             _a.ClearResultViewer();
             _a.UpdateSelectedViewer();
+            _a.UpdateSelectedTheme(DomUtility.GetColorTheme());
             const setting = _a.GetUrlParameter();
             if (setting) {
                 _a.SetSetting(setting);
@@ -5309,6 +5311,7 @@ var Application;
                 written: ViewerMode.Written,
             }, setting.ViewerMode, 'textlog');
             _a.UpdateSelectedViewer(setting.ViewerMode);
+            _a.UpdateSelectedTheme(setting.Theme);
         }
         static SetFormBoolean(dom, value) {
             dom.checked = value;
@@ -5416,6 +5419,20 @@ var Application;
                         }
                         break;
                     }
+                    case 'theme': {
+                        for (let theme in Theme) {
+                            const enumIndex = parseInt(theme);
+                            if (isNaN(enumIndex)) {
+                                continue;
+                            }
+                            const themeValue = enumIndex;
+                            const themeName = Theme[theme].toString().toLocaleLowerCase();
+                            if (value.toLocaleLowerCase() === themeName) {
+                                setting.Theme = themeValue;
+                            }
+                        }
+                        break;
+                    }
                 }
             }
             return setting;
@@ -5510,6 +5527,65 @@ var Application;
         static CheckSelectedViewer(element) {
             element.addEventListener('change', (e) => {
                 _a.UpdateSelectedViewer();
+            });
+        }
+        static UpdateSelectedTheme(selected = null) {
+            var _b;
+            if (selected === null) {
+                selected = DomUtility.GetFormRadio('#ColorThemeSelect', 'theme', {
+                    light: Theme.Light,
+                    dark: Theme.Dark,
+                }, DomUtility.GetColorTheme());
+            }
+            const themeList = [
+                _a.Dom.ColorThemeSelect_Light,
+                _a.Dom.ColorThemeSelect_Dark,
+            ];
+            const themeClassName = [
+                'light',
+                'dark',
+            ];
+            themeList.forEach((theme) => {
+                var _b;
+                (_b = theme.parentElement) === null || _b === void 0 ? void 0 : _b.classList.remove('selected');
+            });
+            let selectedDom = themeList[selected];
+            (_b = selectedDom.parentElement) === null || _b === void 0 ? void 0 : _b.classList.add('selected');
+            selectedDom.click();
+            selectedDom.blur();
+            _a.UpdateThemeClass(themeClassName[selected]);
+            _a.UpdateThemeLink(themeClassName[selected]);
+        }
+        static UpdateThemeClass(themeName) {
+            let bodyNode = document.body;
+            bodyNode.classList.forEach((name) => {
+                bodyNode.classList.remove(name);
+            });
+            bodyNode.classList.add(themeName);
+        }
+        static UpdateThemeLink(themeName) {
+            const addParameter = 'theme=' + themeName;
+            let linkElements = document.getElementsByTagName('a');
+            for (var i = 0; i < linkElements.length; i++) {
+                let element = linkElements[i];
+                if (!element.hasAttribute('_keeptheme')) {
+                    continue;
+                }
+                let href = element.getAttribute('href');
+                if (href == null) {
+                    continue;
+                }
+                href = href.replace(/theme=[a-z]+/, '');
+                let concatParameter = ((href != null) && (href.indexOf('?') >= 0)) ? '&' : '?';
+                href = href + concatParameter + addParameter;
+                href = href.replace('&&', '&');
+                href = href.replace('?&', '?');
+                element.setAttribute('href', href);
+            }
+        }
+        static CheckSelectedTheme(element) {
+            element.addEventListener('change', (e) => {
+                _a.UpdateSelectedTheme();
             });
         }
         static ClearResultViewer() {
@@ -5881,6 +5957,8 @@ var Application;
         'ViewerTimeline': _a.dummyNode,
         'ViewerHeatmap': _a.dummyNode,
         'ViewerWritten': _a.dummyNode,
+        'ColorThemeSelect_Light': _a.dummyNode,
+        'ColorThemeSelect_Dark': _a.dummyNode,
     };
     Main.ResultEnable = false;
     Main.HeatmapColor = '204, 0, 0';
@@ -5915,6 +5993,7 @@ var Application;
             this.EmulationStopWDM = false;
             this.Source = '';
             this.ViewerMode = ViewerMode.TextLog;
+            this.Theme = Theme.Light;
         }
         GetEmulationStopInstruction(instruction) {
             switch (instruction) {
@@ -6102,7 +6181,22 @@ var Application;
                 element.value = setValue;
             }
         }
+        static GetColorTheme() {
+            if (!window.matchMedia) {
+                return Theme.Light;
+            }
+            const match = window.matchMedia('(prefers-color-scheme: dark)');
+            if (match.matches) {
+                return Theme.Dark;
+            }
+            return Theme.Light;
+        }
     }
+    let Theme;
+    (function (Theme) {
+        Theme[Theme["Light"] = 0] = "Light";
+        Theme[Theme["Dark"] = 1] = "Dark";
+    })(Theme || (Theme = {}));
     let ViewerMode;
     (function (ViewerMode) {
         ViewerMode[ViewerMode["TextLog"] = 0] = "TextLog";

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
  <head>
   <meta charset="UTF-8">
@@ -184,11 +184,21 @@ Start:		LDA	#$55
   <footer>
    <ul>
     <li><a class="here">SNES master cycle viewer</a></li
-    ><li><a href="manual.html">Manual</a></li
+    ><li><a _keeptheme href="manual.html">Manual</a></li
     ><li><a href="https://github.com/absindx/SnesMasterCycleViewer">GitHub repository</a></li
     >
    </ul>
   </footer>
+  <div id="ColorTheme">
+   <form id="ColorThemeSelect" autocomplete="off">
+    <div class="item">
+     <input type="radio" name="theme" value="light" id="ColorThemeSelect_Light" checked></input><label for="ColorThemeSelect_Light"><span class="icon">☀️</span>Ligth</label>
+    </div>
+    <div class="item">
+     <input type="radio" name="theme" value="dark"  id="ColorThemeSelect_Dark"         ></input><label for="ColorThemeSelect_Dark" ><span class="icon">🌙</span>Dark</label >
+     </div>
+   </form>
+  </div>
   <script src="main.js"></script>
   <script>
    Application.Main.Initialize();

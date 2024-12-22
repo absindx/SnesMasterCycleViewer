@@ -5790,6 +5790,8 @@ namespace Application{
 			'ViewerTimeline':		Main.dummyNode,
 			'ViewerHeatmap':		Main.dummyNode,
 			'ViewerWritten':		Main.dummyNode,
+			'ColorThemeSelect_Light':	Main.dummyNode,
+			'ColorThemeSelect_Dark':	Main.dummyNode,
 		};
 
 		private static ResultEnable		= false;
@@ -5809,6 +5811,7 @@ namespace Application{
 			DomUtility.ApplyDomEvents('.hexinput', DomUtility.HexadecimalInput);
 			DomUtility.ApplyDomEvents('.intinput', DomUtility.IntegerInput);
 			DomUtility.ApplyDomEvents('#ViewerSelect input[type="radio"] ', Main.CheckSelectedViewer);
+			DomUtility.ApplyDomEvents('#ColorTheme input[type="radio"] ', Main.CheckSelectedTheme);
 
 			Main.Dom.AssemblerAssemble.removeAttribute('disabled');
 			Main.Dom.CopyUrl.removeAttribute('disabled');
@@ -5817,6 +5820,7 @@ namespace Application{
 
 			Main.ClearResultViewer();
 			Main.UpdateSelectedViewer();
+			Main.UpdateSelectedTheme(DomUtility.GetColorTheme());
 
 			const setting	= Main.GetUrlParameter();
 			if(setting){
@@ -6054,6 +6058,7 @@ namespace Application{
 			}, setting.ViewerMode, 'textlog');
 
 			Main.UpdateSelectedViewer(setting.ViewerMode);
+			Main.UpdateSelectedTheme(setting.Theme);
 		}
 		private static SetFormBoolean(dom: HTMLInputElement, value: boolean){
 			dom.checked	= value;
@@ -6160,6 +6165,20 @@ namespace Application{
 							const enumValue: ViewerMode	= enumIndex;
 							if(value.toLocaleLowerCase() === ViewerMode[enumValue].toLowerCase()){
 								setting.ViewerMode	= enumValue;
+							}
+						}
+						break;
+					}
+					case 'theme':{
+						for(let theme in Theme){
+							const enumIndex	= parseInt(theme);
+							if(isNaN(enumIndex)){
+								continue;
+							}
+							const themeValue: Theme	= enumIndex;
+							const themeName	= Theme[theme].toString().toLocaleLowerCase();
+							if(value.toLocaleLowerCase() === themeName){
+								setting.Theme	= themeValue;
 							}
 						}
 						break;
@@ -6273,6 +6292,69 @@ namespace Application{
 		private static CheckSelectedViewer(element: HTMLElement){
 			element.addEventListener('change', (e: Event) => {
 				Main.UpdateSelectedViewer();
+			});
+		}
+
+		private static UpdateSelectedTheme(selected: Theme | null = null){
+			if(selected === null){
+				selected	= DomUtility.GetFormRadio<Theme>('#ColorThemeSelect', 'theme', {
+					light:		Theme.Light,
+					dark:		Theme.Dark,
+				}, DomUtility.GetColorTheme());
+			}
+
+			const themeList	= [
+				Main.Dom.ColorThemeSelect_Light,
+				Main.Dom.ColorThemeSelect_Dark,
+			];
+			const themeClassName = [
+				'light',
+				'dark',
+			];
+
+			themeList.forEach((theme) => {
+				theme.parentElement?.classList.remove('selected');
+			});
+
+			let selectedDom		= themeList[selected];
+			selectedDom.parentElement?.classList.add('selected');
+			selectedDom.click();	// set checked
+			selectedDom.blur();	// remove focus to prevent fast keyboard switching.
+
+			Main.UpdateThemeClass(themeClassName[selected]);
+			Main.UpdateThemeLink(themeClassName[selected]);
+		}
+		private static UpdateThemeClass(themeName: string){
+			let bodyNode		= document.body;
+			bodyNode.classList.forEach((name) => {
+				bodyNode.classList.remove(name);
+			});
+			bodyNode.classList.add(themeName);
+		}
+		private static UpdateThemeLink(themeName: string){
+			const addParameter	= 'theme=' + themeName;
+			let linkElements	= document.getElementsByTagName('a');
+			for(var i = 0; i < linkElements.length; i++) {
+				let element	= linkElements[i];
+				if(!element.hasAttribute('_keeptheme')){
+					continue;
+				}
+				let href	= element.getAttribute('href');
+				if(href == null){
+					continue;
+				}
+				href		= href.replace(/theme=[a-z]+/, '');
+				let concatParameter	= ((href != null) && (href.indexOf('?') >= 0))? '&' : '?';
+				href		= href + concatParameter + addParameter;
+				href		= href.replace('&&', '&')
+				href		= href.replace('?&', '?')
+				element.setAttribute('href', href);
+			}
+		}
+
+		private static CheckSelectedTheme(element: HTMLElement){
+			element.addEventListener('change', (e: Event) => {
+				Main.UpdateSelectedTheme();
 			});
 		}
 
@@ -6711,6 +6793,7 @@ namespace Application{
 		EmulationStopWDM: boolean	= false;
 		Source: string			= '';
 		ViewerMode: ViewerMode		= ViewerMode.TextLog;
+		Theme: Theme			= Theme.Light;
 
 		public GetEmulationStopInstruction(instruction: Emulator.Instruction): boolean{
 			switch(instruction){
@@ -6912,6 +6995,25 @@ namespace Application{
 				element.value		= setValue;
 			}
 		}
+
+		// Get color theme
+		public static GetColorTheme(): Theme{
+			if(!window.matchMedia){
+				return Theme.Light;
+			}
+
+			const match	= window.matchMedia('(prefers-color-scheme: dark)');
+			if(match.matches){
+				return Theme.Dark;
+			}
+
+			return Theme.Light;
+		}
+	}
+
+	enum Theme{
+		Light,
+		Dark,
 	}
 
 	enum ViewerMode{
@@ -6919,7 +7021,7 @@ namespace Application{
 		TableLog,
 		Timeline,
 		Heatmap,
-		Written
+		Written,
 	}
 
 	class Viewer_Heatmap_Log{

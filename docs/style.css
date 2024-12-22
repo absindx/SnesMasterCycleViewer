@@ -671,6 +671,36 @@ footer ul li:first-of-type{
 	border-left		: none;
 }
 
+#ColorTheme{
+	display			: block;
+	position		: fixed;
+	margin			: 0px 8px;
+	padding			: 4px 8px;
+	right			: 0px;
+	bottom			: 0px;
+	background		: RGB(var(--application-background));
+	border			: 1px solid RGBA(var(--application-font-color), 0.25);
+	border-bottom		: none;
+	border-radius		: 8px 8px 0px 0px;
+	box-shadow		: 0px 0px 10px 0px RGBA(var(--application-font-color), 0.25);
+}
+#ColorTheme .item{
+	user-select		: none;
+	opacity			: 0.5;
+	margin			: 4px 4px;
+}
+#ColorTheme .item.selected{
+	opacity			: 1;
+}
+#ColorTheme .item .icon{
+	margin			: 0px;
+	margin-right		: 4px;
+}
+#ColorTheme .item input[type="radio"]{
+	appearance		: none;
+	margin			: 0px;
+}
+
 @media (max-width: 100ch){
 	#AssemblerContainer{
 		display		: block;
