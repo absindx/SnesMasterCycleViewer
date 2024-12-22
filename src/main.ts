@@ -3461,7 +3461,7 @@ namespace Emulator{
 
 		protected UpdateMode7Latch(value: number): number{
 			value		= Utility.Type.ToByte(value);
-			this.Mode7Latch	= Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
+			this.Mode7Latch	= Utility.Type.ToWord(((this.Mode7Latch) >> 8) | (value << 8));
 			return this.Mode7Latch;
 		}
 
@@ -3682,7 +3682,7 @@ namespace Emulator{
 
 		public Step(cycle: AccessSpeed){
 			if(this.stepMultiplication > 0){
-				const result		= Utility.Type.ToShort(this.M7A) * Utility.Type.ToChar(this.M7B);
+				const result		= Utility.Type.ToShort(this.M7A) * Utility.Type.ToChar(this.M7B >> 8);
 				const resultUint	= Utility.Type.ToUint(result);
 				this.MPYL		= Utility.Type.ToByte(resultUint      );
 				this.MPYM		= Utility.Type.ToByte(resultUint >>  8);

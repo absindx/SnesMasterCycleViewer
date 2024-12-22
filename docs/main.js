@@ -2983,7 +2983,7 @@ var Emulator;
         }
         UpdateMode7Latch(value) {
             value = Utility.Type.ToByte(value);
-            this.Mode7Latch = Utility.Type.ToWord(((this.Mode7Latch) << 8) | value);
+            this.Mode7Latch = Utility.Type.ToWord(((this.Mode7Latch) >> 8) | (value << 8));
             return this.Mode7Latch;
         }
         ClockIO(cycle) {
@@ -3183,7 +3183,7 @@ var Emulator;
         }
         Step(cycle) {
             if (this.stepMultiplication > 0) {
-                const result = Utility.Type.ToShort(this.M7A) * Utility.Type.ToChar(this.M7B);
+                const result = Utility.Type.ToShort(this.M7A) * Utility.Type.ToChar(this.M7B >> 8);
                 const resultUint = Utility.Type.ToUint(result);
                 this.MPYL = Utility.Type.ToByte(resultUint);
                 this.MPYM = Utility.Type.ToByte(resultUint >> 8);
